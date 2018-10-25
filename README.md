@@ -1,4 +1,4 @@
-# BasicSpinManual
+# Basic Spin Manual
 
 Page source of Basic Spin Manual translated into Japanese
 

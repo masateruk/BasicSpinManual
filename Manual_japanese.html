@@ -1,0 +1,1405 @@
+<?xml version="1.0" encoding="EUC-JP" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja">
+<head>
+ <meta http-equiv="content-type" content="application/xhtml+xml; charset=EUC-JP" />
+ <meta http-equiv="content-style-type" content="text/css" />
+
+ <title>Basic Spin Manual</title>
+
+</head>
+<body bgcolor="#ffffff">
+
+<p>
+  本文書は、Spin Model Checker の公式サイト <a href="http://spinroot.com/spin/whatispin.html">http://spinroot.com</a> にある <a href="http://spinroot.com/spin/Man/Manual.html">Basic Spin Manual</a> を翻訳したものです。この文書は、Gerard J. Holzmann に許可を得て公開しています。誤訳、誤記などありましたら、<a href="https://github.com/masateruk/BasicSpinManual">https://github.com/masateruk/BasicSpinManual</a>にてIssueまたはPRにてご報告いただけると幸いです。
+</p>
+<p>  
+<div align="right">訳者 Masateru Kawaguchi</div>
+</p>
+<hr class="full_hr" />
+
+<h1><tt>Basic Spin Manual</tt> </h1>
+
+<ul>
+<li><a href="#P">モデリング言語（Modeling Language）</a></li>
+<li><a href="#C">制御構造　(Control Flow）</a></li>
+<li><a href="#A">高度な使い方（Advanced Usage）</a></li>
+<li><a href="#S">Spin（Spin）</a></li>
+<li><a href="#U">まとめ（Summary）</a></li>
+<li><a href="#B">付録: <i>検証スイートの構築（Building a Verification Suite）</i></a></li>
+<li><a href="#R">参考文献（References）</a></li>
+</ul>
+
+<p><tt><i>Spin</i></tt> は並行システム（中でもデータ通信プロトコル）の論理的一貫性を検証するツールです。システムの振る舞いは、<tt>Promela</tt>（Process Meta Language）と呼ばれるモデリング言語によって記述します。この言語では、並行プロセスの動的生成を記述する事ができます。チャネルを介したメッセージ通信は同期通信（ランデブ）、非同期通信（キューによるバッファリング）の両方を記述する事ができます。</p>
+<p>われわれは、<tt><i>Spin</i></tt> を使い <tt>Promela</tt> で記述したシステムをランダムシミュレーションしたり、また、<tt>Promela</tt> で記述したモデルから C 言語の検証プログラムを生成し、システムの正当性の検証を行う事ができます。シミューレーションや検証の間、<tt><i>Spin</i></tt> はデッドロックがない事や意図しないメッセージを受け取らない事、また実行していないコードがないか、などチェックします。検証プログラムはまたシステムの不変条件が保持されているかどうかを検証したり、ノンプログレスサイクル（non-progress execution cycles）がないか検索したり、線形時相論理（Linear Temporal Logic）で記述した制約に違反していないかを検証します。</p>
+<p>検証プログラムは効率性にすぐれ、メモリ使用量も多くありません。<tt><i>Spin</i></tt> による全探索検証の結果、われわれは、システムの振る舞いにエラーがないかどうかについて、数学的に裏付けされた確証を得ることができるのです。コンピュータのリソースの制限から通常は不可能とされる大きなシステムの検証も、&quot;ビット状態空間手法&quot; という倹約技術がその検証を可能としています。この手法では、副作用を最小限に抑えながら、到達可能な各状態を数ビットに圧縮することができます。</p>
+<p>このメモの第 1 部では <tt>Promela</tt> の紹介を、第 2 部では <tt><i>Spin</i></tt> の使用方法についてとりあげます。<tt>Promela</tt> の簡潔なリファレンスは<a href="http://spinroot.com/spin/Man/Quick.html">こちら</a>にあります。付録では、いくつかの例を示し、<tt><i>Spin</i></tt> で検証するために <tt>Promela</tt> を使った基礎的なモデルの作成方法について説明します。</p>
+<p>このマニュアルでは、<tt><i>Spin</i></tt> の主要部分のみについて議論します。<tt>Promela</tt> 言語の拡張やツールの最近のバージョンに関する話題については触れていません（詳しくは、このマニュアルの最後を参照してください）。また、LTL で記述した制約を使用した検証についても議論しません。</p>
+<h2><tt><a name="P">モデリング言語（Modeling Language）</a></tt></h2>
+<p><tt>Promela</tt> は検証用のモデリング言語です。この言語では、検証する上で関心のないプロセス間相互作用を捨象し抽象化したプロトコル（または、一般的な分散システム）を記述することができます。<tt><i>Spin</i></tt> の使用目的は、いくつかの理由により疑わしいと思われる少数のプロセスの振る舞いを検証することです。 <tt>Promela</tt> で関心のある振る舞い部分について記述し、検証します。<tt>Promela</tt> モデルを段階的に詳細化していき、一連のステップを経て検証を完結させます。各々のモデルに対し、環境によって異なる様々な仮定（たとえば、メッセージをロスするとか、メッセージが重複するとか）を設定して、検証することができます。一度、<tt><i>Spin</i></tt> により正しいモデルを構築することができれば、その後のモデルの作成と検証は、その事実をもとに進めることができます。</p>
+<p><tt>Promela</tt> モデルは<i>プロセス</i>、メッセージ<i>チャネル</i>、<i>変数</i>からなります。プロセスはグローバルオブジェクトです。メッセージチャネルと変数はグローバル、もしくは、プロセス内ローカルに宣言して利用することができます。プロセスは振る舞いを記述し、チャネルとグローバル変数はプロセスが走る環境を定義します。</p>
+
+<h3><tt>実行可能性（Executability）</tt></h3>
+<p><tt>Promela</tt> には、条件と文の間になにも違いはありません。単独のブール条件は単に文として扱われます。各文の実行は、その<i>実行可能性</i>によります。文は実行可能であるか、実行不可能でブロックされるかのどちらになります。実行可能性は、同期をとる基本的な方法です。ブロックされたプロセスは、実行可能になるイベントが発生するのを待ちます。たとえば、以下のようにビジーループで書く代わりに</p>
+</p><pre>	while (a != b)
+		skip	/* wait for a==b */
+</pre>
+<p><tt>Promela</tt> では下のように書いて、同じ効果を得ることができます。</p>
+<pre>	(a == b)
+</pre>
+<p>条件は、その条件が満たされるときのみ実行可能になります。もし、条件が満たされないときは、その条件が満たされるまでブロックされます。</p>
+<p>グローバル変数はシステムに関するグローバルな情報を保持し、プロセス内のローカル変数は各プロセスの状態を保持します。変数の宣言は、</p>
+</p><pre>	bool flag;
+	int state;
+	byte msg;
+</pre>
+<p>のように記述します。この例のように <tt>Promela</tt> は値域の異なる3つの整数型をサポートしています。変数のスコープは、プロセスの宣言の外側で宣言されたものはすべてグローバルになり、プロセス内で宣言したものはプロセス内ローカルになります。</p>
+
+<h3><tt>データ型（Data Types）</tt></h3>
+<p>下記の表は、32-bit ワードサイズのコンピュータにおける基本データ型、そのサイズ、範囲をまとめたものです（<a href="http://spinroot.com/spin/Man/datatypes.html">データ型</a>参照）。</p>
+</p><center><b>Table 1 - Data Types</b></center>
+
+<table border="1" cols="4">
+<tbody><tr>
+<td valign="top" width="100">
+<b>Typename</b><br><vline>
+bit or bool<br>byte<br>short<br>int<br>
+</vline></td>
+<td valign="top" width="100">
+<b>C-equivalent</b><br>
+bit-field<br>uchar<br>short<br>int<br>
+</td>
+<td valign="top" width="200">
+<b>Macro in limits.h</b><br>-<br>
+CHAR_BIT (width in bits)<br>
+SHRT_MIN..SHRT_MAX<br>
+INT_MIN..INT_MAX<br>
+</td>
+<td valign="top" width="500">
+<b>Typical Range</b><br>
+0..1<br>0..255<br>
+-2^15 - 1 .. 2^15 - 1<br>
+-2^31 - 1 .. 2^31 - 1<br>
+</td></tr>
+</tbody></table>
+
+<p><tt>bit</tt> と <tt>bool</tt> は 1 ビットの情報を表す同義語です。<tt>byte</tt> は 0 から 255 までの値をとる符号なしの整数です。<tt>shot</tt> と <tt>int</tt> はそれらがとりうる値の範囲が違うだけで、ともに符号付き整数です。</p>
+<p><a href="http://spinroot.com/spin/Man/mtype.html"><tt>mtype</tt></a> は、<tt>mtype = { ... }</tt> という形で宣言される列挙型です。これについては、後述します。</p>
+
+<h3><tt>配列（Array Variables）</tt></h3>
+<p>変数は、配列としても宣言できます。たとえば、</p>
+<pre>	byte state[N]
+</pre>
+<p>と宣言した場合、state は <tt>N</tt> 個の byte 型の変数をもつことができる配列です。配列の各要素への代入および値の参照は、</p>
+<pre>	state[0] = state[3] + 5 * state[3*2/n]
+</pre>
+<p>のように記述し、インデックスには変数や定数を使用する事ができます。配列のインデックスはユニークな整数値を表す式を使用することができます。配列の範囲（0 .. N-1）外のインデックスを指定した場合、その値は未定義です。たいていはランタイムエラーとなります（多次元配列も typedef を使用する事により間接的に宣言できます。<a href="http://spinroot.com/spin/Man/WhatsNew.html">WhatsNew.html</a> 2.1.7 節参照）。</p>
+<p>変数宣言と 2 つのタイプの文、ブール条件文と代入文の例を見てきました。宣言と代入は常に<i>実行可能</i>です。また、条件文はそれが満たされているときのみ実行可能です。</p>
+
+<h3><tt>プロセス型（Process Types）</tt></h3>
+<p>変数やチャネルの状態の参照や変更ができるのは、プロセスのみです。プロセスの振る舞いは <a href="http://spinroot.com/spin/Man/proctype.html"><tt>proctype</tt></a> 宣言により定義します。たとえば、1 つのローカル変数 <tt>state</tt> をもつプロセスの宣言の例を下記に示します。</p>
+<pre>	proctype A()
+	{	byte state;
+
+		state = 3
+	}
+</pre>
+<p>この場合、プロセス型の名前は <tt>A</tt> となります。宣言の本体は中括弧 {} で囲みます。宣言の本体は、0個以上のローカル変数の宣言、および、文のリストからなります。上記の宣言は、1 つのローカル変数宣言と変数 <tt>state</tt> に値 3 を代入するひとつの文からなります。</p>
+<p>文は、セミコロンにより分けられます（セミコロンは文の終了記号ではありません。そのため、最後の文のうしろのセミコロンは意味を持ちません）。<tt>Promela</tt> は 2 つの異なる文の<i>分離記号</i>（矢印記号 <tt>'-&gt;'</tt> とセミコロン <tt>';'</tt>）を持ちます。2 つの違いはありません。矢印記号はときどき 2 つの文の因果関係を表すのに使われます。たとえば、以下の例のように使われます。</p>
+<pre>	byte state = 2;
+
+	proctype A()
+	{	(state == 1) -&gt; state = 3
+	}
+
+	proctype B()
+	{	state = state - 1
+	}
+</pre>
+<p>この例では、2 つのプロセス型 <tt>A</tt> と <tt>B</tt> を宣言しています。変数 <tt>state</tt> はグローバル変数として宣言され、値 2 により初期化されます。プロセス型 A は矢印記号により分けられた 2 つの文からなります。この例では、プロセス型 <tt>B</tt> は変数 <tt>state</tt> の値を 1 減らすひとつの文からなります。代入文は常に実行可能なので、<tt>B</tt> 型のプロセスはブロックされる事なく常にその動作を完了させる事ができます。一方 <tt>A</tt> 型のプロセスは変数 <tt>state</tt> の値が適切な値をとるまで条件文のところでブロックされます。</p>
+
+<h3><tt>プロセスのインスタンス生成（Process Instantiation）</tt></h3>
+<p><tt>proctype</tt> による定義はプロセスの振る舞いを宣言するのみで、実行はしません。<tt>Promela</tt> モデルでははじめ、タイプ <a href="http://spinroot.com/spin/Man/init.html"><tt>init</tt></a> のひとつのプロセスのみが実行されます。このプロセス型はすべての <tt>Promela</tt> モデルの中で明示的に宣言する必要があります<a id="notetext_1" href="#notefoot_1" class="note_super" title="訳注:最新のバーションでは必ずしも init プロセスを宣言する必要はありません。">*1</a>。<tt>Promela</tt> で定義できる最も小さいモデルは、以下のものです。</p>
+<pre>	init { skip }
+</pre>
+<p><tt>skip</tt> は何もしないダミーの文です。しかし興味深い事に、この初期プロセスはグローバル変数を初期化し、プロセスのインスタンスを生成することができます。上記のシステム用の <tt>init</tt> プロセスの宣言は以下のようになります。</p>
+<pre>	init
+	{	run A(); run B()
+	}
+</pre>
+<p><a href="http://spinroot.com/spin/Man/run.html"><tt>run</tt></a> はプロセスの名前（例えば、<tt>A</tt>）を引数にとる単項演算子です。<tt>run</tt> は、そのプロセス型が定義されていてインスタンスが生成できるときのみ実行可能です。たとえばすでにたくさんのプロセスが走っていて新たなインスタンスを生成できないときは、実行不可能となります。</p>
+<p><tt>run</tt> は、生成するプロセスに対し基本データ型のパラメータを渡す事ができます。たとえば、以下のように宣言を記述する事ができます。</p>
+<pre>	proctype A(byte state; short foo)
+	{
+		(state == 1) -&gt; state = foo
+	}
+
+	init
+	{
+		run A(1, 3)
+	}
+</pre>
+<p>データの<a href="http://spinroot.com/spin/Man/arrays.html">配列</a>やプロセス型をパラメータとして渡す事はできません。後で見るように、基本データ型以外にパラメータとして渡せるのは、唯一メッセージチャネルのみです。</p>
+<p>新たなプロセスを生成する <tt>run</tt> は <tt>init</tt> プロセスだけでなくすべてのプロセスで使用可能です。プロセスは、<tt>run</tt> により生成されます。プロセスは、終了したときに（すなわち、プロセス型の宣言の本体部分の最後まで到達すると）姿を消します。プロセスは自身が生成したプロセスが終了してから終了します。</p>
+<p><tt>run</tt> によりプロセス型 <tt>A</tt> と <tt>B</tt> のコピーをいくつでも作る事ができます。しかしひとつ以上の並行プロセスがひとつのグローバル変数を読み書きする場合、よく知られる問題を引き起こしかねません（[2] に例があります）。たとえば、以下のような 2 つのプロセスがグローバル変数 <tt>state</tt> を共有するシステムを考えましょう。</p>
+<pre>	byte state = 1;
+
+	proctype A()
+	{	byte tmp;
+		(state==1) -&gt; tmp = state; tmp = tmp+1; state = tmp
+	}
+
+	proctype B()
+	{	byte tmp;
+		(state==1) -&gt; tmp = state; tmp = tmp-1; state = tmp
+	}
+
+	init
+	{	run A(); run B()
+	}
+</pre>
+<p>もし 2 つのうちひとつのプロセスが相手のプロセスがスタートする前に完了してしまうと、もう一方のプロセスははじめの条件文のところで永遠にブロックされてしまいます。もし 2 つのプロセスが同時に条件文を通り抜けたら、2 つとも完了する事ができるでしょう。しかしそのときの <tt>state</tt> の値は予測不可能です。<tt>state</tt> の値は 0, 1, 2 のうちのどれかになるでしょう。</p>
+<p>この問題にはたくさんの解が考えられます。グローバル変数を使わないというような方法から、共有変数のテストとセットを不可分で行う事を保証する特別なマシン語を利用する方法まで。下記の例は最初に公開された解のひとつです。これはドイツの数学者 Dekker によるものです。このアルゴリズムにより、3 つのグローバル変数を使い、コード中の任意の<i>クリティカルセクション</i>への進入を 2 つのプロセスが排他的に行うことができます。<tt>Promela</tt> モデルの最初の 4 行は、C 言語スタイルのマクロ定義です。最初の 2 つのマクロは <tt>true</tt> を定数 1、<tt>false</tt> を定数 0 に定義しています。同様に、<i>Aturn</i>, <i>Bturn</i> も定数として定義しています。</p>
+<pre>	#define true	1
+	#define false	0
+	#define Aturn	false
+	#define Bturn	true
+
+	bool x, y, t;
+
+	proctype A()
+	{	x = true;
+		t = Bturn;
+		(y == false || t == Aturn);
+		/* critical section */
+		x = false
+	}
+
+	proctype B()
+	{	y = true;
+		t = Aturn;
+		(x == false || t == Bturn);
+		/* critical section */
+		y = false
+	}
+
+	init
+	{	run A(); run B()
+	}
+</pre>
+<p>このアルゴリズムは、繰り返し実行する事ができ、2つのプロセスの実行スピードにはまったく依存していません。</p>
+
+<h3><tt>atomic シーケンス（Atomic Sequences）</tt></h3>
+<p><tt>Promela</tt> にはこの<i>テスト &amp; セット</i>の問題を回避する別の手段があります。それは、<a href="http://spinroot.com/spin/Man/atomic.html"><tt>atomic</tt></a> です。キーワード <tt>atomic</tt> で囲まれる文のシーケンスは、他のプロセスによってインターリーブされず、不可分に実行されます。<tt>atomic</tt> シーケンスの中の最初の文以外のところでブロックされた場合、ランタイムエラーとなります<a id="notetext_2" href="#notefoot_2" class="note_super" title="訳注:">*2</a>。このように <tt>atomic</tt> シーケンスを使う事により、先の例に示したグローバル変数 <tt>state</tt> に対する並行アクセスに関する問題を防ぐことができます。</p>
+<pre>	byte state = 1;
+
+	proctype A()
+	{	atomic {
+		  (state==1) -&gt; state = state+1
+		}
+	}
+
+	proctype B()
+	{	atomic {
+		  (state==1) -&gt; state = state-1
+		}
+	}
+
+	init
+	{	run A(); run B()
+	}
+</pre>
+<p>このケースでは <tt>state</tt> の最後の値は、どちらのプロセスが実行したかにより 0 または 2 になります。もう一方のプロセスは永遠にブロックされます。</p>
+<p><tt>atomic</tt> シーケンスは検証するモデルの複雑さを軽減する重要な道具です。<tt>atomic</tt> シーケンスは分散システムがとりうるインターリービングを制限することに注意してください。例えば、ローカル変数に対する操作を <tt>atomic</tt> シーケンスとすることによって、複雑なモデルを扱う事ができるようになります。これにより複雑さを劇的に減少させる事ができます。</p>
+
+<h3><tt>メッセージ通信（Message Passing）</tt></h3>
+<p>メッセージ<a href="http://spinroot.com/spin/Man/chan.html">チャネル</a>はひとつのプロセスから他のプロセスへのデータ転送をモデル化するのに使用されます。以下で示すように、チャネルはローカル変数でもグローバル変数でも宣言できます。</p>
+<pre>	chan qname = [16] of { short }
+</pre>
+<p>上記は <tt>short</tt> 型のメッセージを 16 個保持する事ができるチャネルを宣言しています。チャネルの名前はチャネルを通して他のプロセスへ送ったり、プロセスのインスタンス生成時のパラメータとして渡したりすることができます。もしそのチャネルでやり取りされるメッセージがひとつ以上のフィールドを持つ場合の宣言は以下のようになります。</p>
+<pre>	chan qname = [16] of { byte, int, chan, byte }
+</pre>
+<p>このときこのチャネルは、それぞれ 2 つの 8 bitの値、1 つの 32 bitの値、チャネルの名前をもつメッセージを 16 個保持することができます。</p>
+<p>次の文、</p>
+<pre>	<a href="http://spinroot.com/spin/Man/send.html">qname!expr</a>
+</pre>
+<p>は、式 <tt>expr</tt> の値を上記の例で作ったチャネル <tt>qname</tt> へ送信します。チャネルの（キューの）末尾にその値を追加します。</p>
+<pre>	<a href="http://spinroot.com/spin/Man/receive.html">qname?msg</a>
+</pre>
+<p>上の文は、チャネルの先頭からメッセージを受信し、変数 <tt>msg</tt> に代入します。チャネルは first-in-first-out 順でメッセージをやりとりします。上記のケースではひとつの値がチャネルを通してやりとりされてます。もしメッセージごとに 2 つ以上の値をやりとりしたい場合は、下記のようにコンマで区切ったリストをチャネルに続き記述します。</p>
+<pre>	qname!expr1,expr2,expr3
+	qname?var1,var2,var3
+</pre>
+<p>チャネルの宣言よりもメッセージの送受信のパラメータが多かったり、少なかったりした場合はエラーとなります。<br />
+便宜のため、メッセージの最初のフィールドはよくメッセージタイプを表すために使われます（つまり、定数が使われる事が多いのです）。このような場合の別の書き方として、送受信操作のパラメータを、メッセージタイプに続き括弧でくくってメッセージフィールドのリストを続けることがあります。</p>
+<pre>	qname!expr1(expr2,expr3)
+	qname?var1(var2,var3)
+</pre>
+<p>メッセージの送信操作は、チャネルがいっぱいでないとき実行可能となります。また受信操作は受信しようとしているチャネルが空でないとき実行可能となります。また、受信時のパラメータのいくつかを定数とする事もできます。</p>
+<pre>	qname?cons1,var2,cons2
+</pre>
+<p>この場合、定数で指定したすべてのメッセージフィールドの値がチャネルの先頭のメッセージと一致する場合、受信操作は実行可能となります。繰り返しになりますが、実行不可能であったとしてもなにも悪い事はおきません。プロセスはその文が実行可能になるまでブロックされるか、他の実行可能な文を実行します。</p>
+<p>ここにいままで紹介したいくつかの機構を使った例を示しましょう。</p>
+<pre>	proctype A(chan q1)
+	{	chan q2;
+		q1?q2;
+		q2!123
+	}
+
+	proctype B(chan qforb)
+	{	int x;
+		qforb?x;
+		printf("x = %d\n", x)
+	}
+
+	init {
+		chan qname = [1] of { chan };
+		chan qforb = [1] of { int };
+		run A(qname);
+		run B(qforb);
+		qname!qforb
+	}
+</pre>
+<p>プリントされる値は、123 となります。</p>
+<p>定義済みの関数 <tt>len(qname)</tt> はパラメータで渡した名前をもつチャネルに現在保存されているメッセージの数を返します。もし代入文の右辺ではなく単にひとつの文として使われた場合、チャネルが空の場合は実行不可能になる事に注意してください。なぜなら、空の場合は 0 を返し、定義によりそれは一時的に実行不可能となるからです。また、</p>
+<pre>	(qname?var == 0)	/* syntax error */
+</pre>
+<p>または</p>
+<pre>	(a &gt; b &amp;&amp; qname!123)	/* syntax error */
+</pre>
+<p>のように、<tt>Promela</tt> では条件文と送受信操作を組み合わせることはできません（このような条件文は副作用なしには評価できない事に注意してください）。上記のような受信文の代わりに、? のうしろに [] を使うことができます。</p>
+<pre>	<a href="http://spinroot.com/spin/Man/poll.html">qname?[ack,var]</a>
+</pre>
+<p>この文は、条件文として評価されます。もし以下の文が実行可能だったら（<tt>qname</tt> チャネルの先頭に <tt>ack</tt> メッセージがあったら）、1 を返します。そうでなければ、0 を返します。</p>
+<pre>	<a href="http://spinroot.com/spin/Man/receive.html">qname?ack,var</a>
+</pre>
+<p>以下の文は、受信できるかどうか評価されますが、決して受信しない、副作用のない文です。</p>
+<pre>	qname?[ack,var]
+</pre>
+<p>以下のような non-atomic なシーケンスに注意してください。</p>
+<pre>	(len(qname) &lt; MAX) -&gt; qname!msgtype
+</pre>
+<p>または</p>
+<pre>	qname?[msgtype] -&gt; qname?msgtype
+</pre>
+<p>これらの文は、2 つ目の文がひとつ目の文のあとに<i>必ず</i>実行されるとは限りません。複数のプロセス間で共有するチャネルにアクセスする場合はレースコンディションが存在するかもしれません。最初のケースでは、このプロセスがチャネルがいっぱいではないと決定した直後に他のプロセスがこのチャネルへメッセージを送信する事ができます。また、2 番目のケースは、われわれのプロセスがメッセージの存在を確認した直後に、他のプロセスがそのメッセージを奪い取ることができます。</p>
+
+<h3><tt>ランデブ通信（Rendez-Vous Communication）</tt></h3>
+<p>ここまではメッセージチャネルを介した非同期通信について見てきました。ここで <tt>N</tt> を正の整数とすると、バッファサイズ <tt>N</tt> のチャネルを以下のように宣言してきました。</p>
+<pre>	chan qname = [N] of { byte }
+</pre>
+<p>このとき、論理的には以下のような宣言も認められます。</p>
+<pre>	chan port = [0] of { byte }
+</pre>
+<p>これは、byte メッセージひとつをやりとりするランデブポートを定義しています。チャネルのサイズが 0 であるということは、この<tt>ポート</tt>はメッセージを保持しておく事はできません。このようなランデブポートを介してのメッセージのやり取りは同期になります。つぎのような例を考えてみましょう。</p>
+<pre>	#define msgtype 33
+
+	chan name = [0] of { byte, byte };
+
+	proctype A()
+	{	name!msgtype(124);
+		name!msgtype(121)
+	}
+
+	proctype B()
+	{	byte state;
+		name?msgtype(state)
+	}
+
+	init
+	{	atomic { run A(); run B() }
+	}
+</pre>
+<p>チャネル <tt>name</tt> はグローバルなランデブポートとして宣言されています。2 つのプロセスは最初の文を同期して実行します。<tt>msgtype</tt> によるハンドシェイクにより、124 が <tt>B</tt> のローカル変数 <tt>state</tt> へ転送されます。<tt>A</tt> の 2 番目の文は実行できません、なぜならプロセス <tt>B</tt> にそれに対応する受信操作がないからです。</p>
+<p>もしチャネル <tt>name</tt> が 0 ではないバッファサイズで宣言されていると、振る舞いは異なります。バッファサイズが少なくとも 2 あれば、プロセス <tt>B</tt> がスタートする前であったとしてもプロセス <tt>A</tt> は実行を完了する事ができたでしょう。バッファサイズが 1 の場合は、次のようなシーケンスとなるでしょう。プロセス <tt>A</tt> が最初の送信操作を行った後、2 番目の送信操作でチャネルがフルのためブロックされます。続いて、プロセス <tt>B</tt> が最初のメッセージを受信します。この時点でプロセス <tt>A</tt> は再び実行可能となり、どのプロセスも受信しない余分なメッセージを送信します。　</p>
+<p>ランデブ通信は、2 者間で行われます。ランデブ通信により同期がとれるのは、送信プロセスと受信プロセスの 2 つのプロセスだけです。後半ではセマフォの構築するためにこのランデブ通信を利用する例を見ます。しかしその前に、役に立ちそうないくつかの制御構造について紹介したいと思います。</p>
+
+<h2><tt><a name="C">制御構造　(Control Flow）</a></tt></h2>
+<p>前節までに、文の連結、プロセスの並行実行、アトミックシーケンスの 3 つの制御構造を見てきました。ここでは、さらに <tt>Promela</tt> でとりあげるべき 3 つの制御構造について紹介します。選択、反復、無条件ジャンプの 3 つです。</p>
+
+<h3><tt>選択（Case Selection）</tt></h3>
+<p>最も単純な構造は<a href="http://spinroot.com/spin/Man/if.html">選択構造</a>です。たとえば、2 つの変数 <tt>a</tt> と <tt>b</tt> の関係を使って 2 つのオプションを書く事ができます。</p>
+<pre>	if
+	:: (a != b) -&gt; option1
+	:: (a == b) -&gt; option2
+	fi
+</pre>
+<p>選択構造は 2 つの実行シーケンスからなります。それぞれの頭にはコロン 2 つをおきます。リストの中から実行されるシーケンスはひとつだけです。最初の文が実行可能なもののうちひとつが実行されます。最初の文は<i>ガード</i>と呼ばれます。</p>
+<p>上記の例では、ガードは排他的になっていますが、必ずしもそうでなければならいというわけではありません。もしひとつ以上のガードが実行可能な場合、実行可能なもののうちどのシーケンスが実行されるかは非決定的です。もしすべてのガードが実行不可能だった場合、プロセスはすくなくともひとつのガードが選択できるようになるまでブロックされます。ガードとして使用できる文の種類に制限はありません。以下に示すように、メッセージの受信操作も書く事ができます。</p>
+<pre>	#define a 1
+	#define b 2
+
+	chan ch = [1] of { byte };
+
+	proctype A()
+	{	ch!a
+	}
+
+	proctype B()
+	{	ch!b
+	}
+
+	proctype C()
+	{	if
+		:: ch?a
+		:: ch?b
+		fi
+	}
+
+	init
+	{	atomic { run A(); run B(); run C() }
+	}
+</pre>
+<p>この例では 3 つのプロセスとひとつのチャネルを定義しています。プロセス <tt>C</tt> の選択構造の最初のオプションはチャネルにメッセージ <tt>a</tt>（ここでは <tt>a</tt> はマクロで定義されているように定数 1）が含まれるとき実行可能になります。2 番目のオプションはメッセージ <tt>b</tt>（<tt>a</tt> と同様にこれも定数）が含まれるとき実行可能になります。プロセスの実行スピードに関して特に何も規定していないため、どちらのメッセージが最初に届くかは分かりません。</p>
+<p>以下のプロセスは変数 <tt>count</tt> を一度だけ +1 するか、-1 します。</p>
+<pre>	byte count;
+
+	proctype counter()
+	{
+		if
+		:: count = count + 1
+		:: count = count - 1
+		fi
+	}
+</pre>
+
+<h3><tt>反復（Repetition）</tt></h3>
+<p>選択構造の論理的延長線上に<a href="http://spinroot.com/spin/Man/do.html">反復構造</a>があります。上記の例で示したプログラムに手を加えて、変数の値を繰り返しランダムにアップダウンさせるプログラムを得ることができます。</p>
+<pre>	byte count;
+
+	proctype counter()
+	{
+		do
+		:: count = count + 1
+		:: count = count - 1
+		:: (count == 0) -&gt; break
+		od
+	}
+</pre>
+<p>実行のたびにひとつのオプションが選ばれます。そのオプションを実行し終わると、その構造を繰り返し実行します。反復構造を終了するには通常 <tt>break</tt> 文を使用します。この例では、その変数 <tt>count</tt> の値が 0 のときにループから抜ける事ができます。<tt>count</tt> が 0 のときに必ずしも <tt>break</tt> を実行するわけではないということに注意してください。他の 2 つのオプションは常に実行可能なので、<tt>count</tt> が 0 になったからといって必ずしも <tt>break</tt> されるわけではないのです。<tt>count</tt> が 0 になったときに必ず <tt>break</tt> するようにするには、以下のようにプログラムを変更する必要があります。</p>
+<pre>	proctype counter()
+	{
+		do
+		:: (count != 0) -&gt;
+			if
+			:: count = count + 1
+			:: count = count - 1
+			fi
+		:: (count == 0) -&gt; break
+		od
+	}
+</pre>
+
+<h3><tt>無条件ジャンプ（Unconditional Jumps）</tt></h3>
+<p>ループから抜けるもう一つの方法は、無条件ジャンプ、悪名高い <a href="http://spinroot.com/spin/Man/goto.html"><tt>goto</tt></a> 文、を使用する方法です。以下の例は、0 ではない 2 つの正の整数の最大公約数を見つけるユークリッドのアルゴリズムを実装したものです。</p>
+<pre>	proctype Euclid(int x, y)
+	{
+		do
+		:: (x &gt;  y) -&gt; x = x - y
+		:: (x &lt;  y) -&gt; y = y - x
+		:: (x == y) -&gt; goto done
+		od;
+	done:
+		skip
+	}
+</pre>
+<p>この例の <tt>goto</tt> ではラベル done へジャンプします。ラベルは文の前におく必要があります。上記ではプログラムの最後にジャンプさせたいのですが、こういったケースではダミー文の <tt>skip</tt> が役に立ちます。<tt>skip</tt> はいつでも実行可能な何も作用を及ぼさない文です。また <tt>goto</tt> は常に実行可能です。</p>
+<p>以下の例ではチャネル <tt>in</tt> に入ってくるメッセージをその大きさによりそれぞれ <tt>large</tt> チャネルと <tt>small</tt> チャネルに分配するフィルタを定義しています。マクロにより定数 <tt>N</tt> は 128 に、<tt>size</tt> は 16 に定義されています。</p>
+<pre>	#define N    128
+	#define size  16
+
+	chan in    = [size] of { short };
+	chan large = [size] of { short };
+	chan small = [size] of { short };
+
+	proctype split()
+	{	short cargo;
+
+		do
+		:: in?cargo -&gt;
+			if
+			:: (cargo &gt;= N) -&gt;
+				large!cargo
+			:: (cargo &lt;  N) -&gt;
+				small!cargo
+			fi
+		od
+	}
+
+	init
+	{	run split()
+	}
+</pre>
+<p>以下に示すプロセス型 <tt>merge</tt> は、2つのストリームを再びひとつにまとめます。しかし、順番はもとのものは異なることになるでしょう。</p>
+<pre>	proctype merge()
+	{	short cargo;
+	
+		do
+		::	if
+			:: large?cargo
+			:: small?cargo
+			fi;
+			in!cargo
+		od
+	}
+</pre>
+<p>もし <tt>init</tt> プロセスを以下のようにしたら、<tt>split</tt> と <tt>merge</tt> プロセスは永遠に走り続けるでしょう。</p>
+<pre>	init
+	{	in!345; in!12; in!6777;
+		in!32;  in!0;
+		run split();
+		run merge()
+	}
+</pre>
+<p>最後の例は、ランデブ通信を使ってダイクストラのセマフォを実装したものです。</p>
+<pre>	#define p	0
+	#define v	1
+	
+	chan sema = [0] of { bit };
+	
+	proctype dijkstra()
+	{	byte count = 1;
+	
+		do
+		:: (count == 1) -&gt;
+			sema!p; count = 0
+		:: (count == 0) -&gt;
+			sema?v; count = 1
+		od	
+	}
+	
+	proctype user()
+	{	do
+		:: sema?p;
+		   /*     critical section */
+		   sema!v;
+		   /* non-critical section */
+		od
+	}
+	
+	init
+	{	run dijkstra();
+		run user();
+		run user();
+		run user()
+	}
+</pre>
+<p>セマフォはクリティカルセクションに 2 つ以上のプロセスが同時にいないことを保障してくれます。しかし、ひとつのプロセスがクリティカルセクションを独占的にアクセスすることを回避してくれるわけではありません。</p>
+
+<h3><tt>手続きのモデルリングと再帰（Modeling Procedures and Recursion）</tt></h3>
+<p>手続きは、たとえ再帰的でも、プロセスによってモデル化可能です。返り値はグローバル変数か、メッセージによって呼び出しプロセスへ返されます。以下のプログラムはそれを示したものです。</p>
+<pre>	proctype fact(int n; chan p)
+	{	chan child = [1] of { int };
+		int result;
+	
+		if
+		:: (n &lt;= 1) -&gt; p!1
+		:: (n &gt;= 2) -&gt;
+			run fact(n-1, child);
+			child?result;
+			p!n*result
+		fi
+	}
+	init
+	{	chan child = [1] of { int };
+		int result;
+	
+		run fact(7, child);
+		child?result;
+		printf("result: %d\n", result)
+	}
+</pre>
+<p>プロセス <i>fact(n, p)</i> は、<i>n</i> の階乗を再帰的に計算し、親プロセス <i>p</i> へメッセージにより結果を返します。</p>
+
+<h3><tt>タイムアウト（Timeouts）</tt></h3>
+<p>前節までに <tt>Promela</tt> での定義済みの文を 2 つ、<tt>skip</tt> と <tt>break</tt> について紹介しました。もうひとつの定義済みの文は <a href="http://spinroot.com/spin/Man/timeout.html"><tt>timeout</tt></a> です。<tt>timeout</tt> は、空のチャネルからメッセージを待つような、決して真にはならない条件を待つのを中断するためにつくられた、特別な条件をモデル化したものです。<tt>timeout</tt> キーワードは、システムがハングした状態からの脱出を <tt>Promela</tt> でモデル化するためのものです。<tt>timeout</tt> 条件は、分散システム内の他のすべての文が実行不可能になったときに真になります。絶対的なタイミングを考慮にいれていないことに注意してください。これは検証作業において極めて重要なことです。また、われわれは <tt>timeout</tt> がどのように実装されるべきかについては明示していません。以下に、システムが行き詰まったときにはいつでも <i>guard</i> チャネルに reset メッセージを送信するプロセスの例を示します。</p>
+<pre>	proctype watchdog()
+	{
+		do
+		:: timeout -&gt; guard!reset
+		od
+	}
+</pre>
+
+<h3><tt>表明（Assertions）</tt></h3>
+<p><tt>Promela</tt> で多少説明が必要な重要なもうひとつの言語構成要素は <a href="http://spinroot.com/spin/Man/assert.html"><tt>assert</tt></a> 文です。この文は以下の形式をとります。</p>
+<pre>	assert(any_boolean_condition)
+</pre>
+<p><tt>assert</tt> はいつでも実行可能です。もし条件が満たされたならば、この文はなにも作用を及ぼしません。しかし、もし条件が満たされなかったら、この文はエラーを報告するでしょう。</p>
+
+<h2><tt><a name="A">高度な使い方（Advanced Usage）<a></tt></h2>
+<p>このモデリング言語は検証面に特化したいつくかの特徴を持ちます。そのような特徴は、これから話題にあげるラベルの使い方や、<tt>Promela</tt> における <tt>timeout</tt> 文の意味や、<tt>assert</tt> のような文の使い方に見られます。</p>
+
+<h3><tt>終了状態ラベル（End-State Labels）</tt></h3>
+<p>検証言語として <tt>Promela</tt> を使用する場合は、モデル化した振る舞いについて非常に特殊な表明ができるようにしなければなりません。特に <tt>Promela</tt> によってデッドロックの存在をチェックする場合は、検証プログラムは、ユーザが望んでいないデッドロックと通常の<a href="http://spinroot.com/spin/Man/end.html"><i>終了状態</i></a>を見分けられるようにしなければなりません。</p>
+<p><tt>Promela</tt> では、インスタンス化されたすべてのプロセスが定義されているプログラム本体の最後まで到達し、かつ、すべてのメッセージチャネルが空である状態を、通常の終了状態と見なします。しかし、すべてのプロセスがプログラム本体の最後まで到達するようにモデル化されるとは限りません。例えば、いくつかのプロセスは <tt>IDLE</tt> 状態に居続けるかもしれませんし、また、あるプロセスは新しいメッセージの受信をループの先頭で待ち続けるかもしれません。</p>
+<p>そこで、検証プログラムがこのような終了状態とデッドロックを明確に見分けるために、<tt>Promela</tt> では終了状態ラベルを使う事ができます。たとえば、前述のプロセス型 <tt>dijkstra()</tt> にラベルをひとつ追加します<a id="notetext_3" href="#notefoot_3" class="note_super" title="訳注:">*3</a>。</p>
+<pre>	proctype dijkstra()
+	{	byte count = 1;
+	
+	end:	do
+		:: (count == 1) -&gt;
+			sema!p; count = 0
+		:: (count == 0) -&gt;
+			sema?v; count = 1
+		od	
+	}
+</pre>
+<p>end ラベルを追加することにより、プロセス型 <tt>dijkstra()</tt> がプロセス定義の最後の括弧まで到達しなくても、ループの先頭にいればエラーとはなりません。もちろん、このような状態はデッドロック状態の一部かもしれませんが、もしデッドロックがまだあるとしたら、それはこのプロセスが原因ではないでしょう（もし他のプロセスが正当な終了状態にいない場合は検証プログラムが報告してくれるでしょう）。</p>
+<p>ひとつの検証モデルにつきひとつ以上の終了状態があるかもしれません。もしそのようなときは、プロセス内のラベルの名前はすべてユニークにしなければなりません。また、終了状態ラベルの名前は、かならず <tt>end</tt> の <i>3 文字から始める</i>必要があります。<tt>endde</tt>, <tt>end0</tt>, <tt>end_appel</tt> のようにラベル付けされた状態は検証プログラムにすべて正当な終了状態として扱われます。</p>
+
+<h3><tt>プログレス状態ラベル（Progress-State Labels）</tt></h3>
+<p>終了状態ラベルと同じように、ユーザは<a href="http://spinroot.com/spin/Man/progress.html"><i>プログレス状態</i></a>ラベルを定義する事ができます。この場合、プログレス状態ラベルはプロトコルが進展<i>しなければならない</i>状態にマークすることができます。プロトコルの実行中にこれらプログレス状態ラベルをひとつも通過しないすべての無限サイクルは、潜在的に餓死ループ（starvation loop）になり得ます。たとえば <tt>dijkstra</tt> の例では、セマフォテストの成功に &quot;progress&quot; というラベルをつけ、検証プログラムは、プロトコルの実行中は必ずセマフォテストを成功するプロセスがあることを確認してくれます。</p>
+<pre>	proctype dijkstra()
+	{	byte count = 1;
+	
+	end:	do
+		:: (count == 1) -&gt;
+	progress:	sema!p; count = 0
+		:: (count == 0) -&gt;
+			sema?v; count = 1
+		od	
+	}
+</pre>
+<p>もしひとつ以上の状態にプログレスラベルをつける場合は、<tt>progress0</tt>, <tt>progress_foo</tt> のような <tt>progress</tt> から始まるユニークな名前のラベルをつける必要があります。</p>
+<p><tt>-a</tt> フラグを指定して <tt><i>Spin</i></tt> に生成させた検証プログラムはランタイムオプション <tt>-l</tt> をサポートします。検証プログラムは、デフォルトではまずデッドロックの探索を行いますが、このフラグを指定した検証プログラムは non-progress ループの探索を行います。この探索はデッドロックの探索に比べ約 2 倍の時間とメモリ使用量を要します（標準の手法に対する大幅な改良は、強連結成分解析を基盤としています）。</p>
+
+<h3><tt>メッセージタイプ定義（Message Type Definitions）</tt></h3>
+<p>いままでは、どのように変数を宣言するのか、また、C スタイルのマクロを使ってどのように定数を定義するのか、を見てきました。<tt>Promela</tt> はメッセージタイプの定義のために以下のような定義も認めています。</p>
+<pre>	mtype = { ack, nak, err, next, accept }
+</pre>
+<p>この方法は、それぞれの<a href="http://spinroot.com/spin/Man/mtype.html">メッセージタイプ</a>に実際にどういった値を使用するかということを抽象している点でより好ましいやり方です。定数の名前はそのまま検証プログラムの中で使用する事ができるため、エラーの報告を改善する事ができます。</p>
+<p>チャネルの宣言において <tt>mtype</tt> キーワードを使用する事により、対応するメッセージフィールドを数値としてではなく、記号として扱う事ができます。例えば、以下のように宣言できます。</p>
+<pre>	chan q = [4] of { mtype, mtype, bit, short };
+</pre>
+
+<h3><tt>偽文（Pseudo Statements）</tt></h3>
+<p>ここまでは、<tt>Promela</tt> で定義されるすべての基本文（代入、条件、送信／受信、<a href="http://spinroot.com/spin/Man/assert.html"><tt>assert</tt></a>、<a href="http://spinroot.com/spin/Man/timeout.html"><tt>timeout</tt></a>、<a href="http://spinroot.com/spin/Man/goto.html"><tt>goto</tt></a>、<a href="http://spinroot.com/spin/Man/break.html"><tt>break</tt></a>、<a href="http://spinroot.com/spin/Man/skip.html"><tt>skip</tt></a>）を見てきました。そして、文でありませんが <a href="http://spinroot.com/spin/Man/chan.html"><tt>chan</tt></a>, <a href="http://spinroot.com/spin/Man/len.html"><tt>len</tt></a>, <a href="http://spinroot.com/spin/Man/run.html"><tt>run</tt></a> といった条件文や代入文で使用する事ができる単項演算子についても見てきました。</p>
+<p><tt>skip</tt> 文は、実際にはまったく作用を及ぼさない、構文の要求を満たすのにフィルタの役割を果たす文として紹介しました。<tt>skip</tt> は形式的には言語の一部ではないのですが、単に 定数 (1) と書いた単純な条件文と同じ効果をもつ同義語であり、<i>偽文</i>です。同じような偽文に、(0) と等価な <tt>block</tt> や <tt>hang</tt>、<tt>assert(0)</tt> と等価な <tt>halt</tt> が考えられます（実際にはこれらは定義されていません）。<tt>else</tt> はもうひとつの偽文です。これは選択や反復の中で最後のオプションシーケンスの文として使用する事ができます。</p>
+<pre>	if
+	:: a &gt; b -&gt; ...
+	:: else -&gt; ...
+	fi
+</pre>
+<p><tt>else</tt> は同じ選択の中の他のすべてのオプションが実行不可能なときにだけ実行可能になります。</p>
+
+<h3><tt>例（Example）</tt></h3>
+<p><tt>Promela</tt> でモデル化した単純な（欠陥のある）プロトコルの例を示します。</p>
+<pre>	mtype = { ack, nak, err, next, accept };
+
+	proctype transfer(chan in,out,chin,chout)
+	{	byte o, i;
+	
+		in?next(o);
+	
+		do
+		:: chin?nak(i) -&gt;
+				out!accept(i);
+				chout!ack(o)
+	
+		:: chin?ack(i) -&gt;
+				out!accept(i);
+				in?next(o);
+				chout!ack(o)
+	
+		:: chin?err(i) -&gt;
+				chout!nak(o)
+		od
+	}
+
+	init
+	{	chan AtoB = [1] of { mtype, byte };
+		chan BtoA = [1] of { mtype, byte };
+	
+		chan Ain  = [2] of { mtype, byte };
+		chan Bin  = [2] of { mtype, byte };
+	
+		chan Aout = [2] of { mtype, byte };
+		chan Bout = [2] of { mtype, byte };
+	
+		atomic {
+		  run transfer(Ain,Aout, AtoB,BtoA);
+		  run transfer(Bin,Bout, BtoA,AtoB)
+		};
+	
+		AtoB!err(0)
+	}
+</pre>
+<p>チャネル <tt>Ain</tt> と <tt>Bin</tt> は、ここでは定義していないバックグランドプロセス（この転送システムのユーザプロセス）によって、メッセージタイプ <tt>next</tt> と任意の値（ASCIIの文字コード）のトークンメッセージで埋められます。同様に、ユーザプロセスは、チャネル <tt>Aout</tt>, <tt>Bout</tt> からデータを受信する事ができます。チャネルとプロセスは、アトミックに初期化され、ダミーの <tt>err</tt> メッセージによりスタートします。</p>
+
+<h2><tt><a name="S">Spin</a>（Spin）<small>（<a href="http://spinroot.com/spin/Man/Spin.html">Spin.html</a>も見てください）</small></tt></h2>
+<p><tt>Promela</tt> で記述したシステムのモデルが与えられたとき、<tt><i>Spin</i></tt> はシステムのランダムシミュレーションをしたり、システムの状態空間を素早く探索する C 言語の検証プログラムを生成したりすることができます。この検証プログラムは、たとえば、プロトコルを実行中、ユーザが記述したシステムの不変条件を違反していないか、チェックします。</p>
+<p>何もオプションを指定しないで <tt><i>Spin</i></tt> を起動した場合は、ランダムシミュレーションを行います。オプション <tt>-n N</tt> を指定した場合は、ランダムシミュレーションのための種を整数 <i>N</i> に設定します。</p>
+<p>オプション <tt>pglrs</tt> は、ユーザがシミュレーションについて出力したい情報のレベルを設定するのに使用します。出力のすべての行は、通常モデルのソースの行番号への参照を含みます。</p>
+<p><tt>-p</tt> は、すべてのステップに対して <tt>Promela</tt> プロセスの状態変化を表示します。</p>
+<p><tt>-g</tt> は、すべてのステップに対してそのときのグローバル変数の値を表示します。</p>
+<p><tt>-l</tt> は、ローカル変数をもつプロセスが状態変化したあとのローカル変数の値を表示します。<tt>-p</tt> オプションを組み合わせて使うといいでしょう。</p>
+<p><tt>-r</tt> はすべてのメッセージ受信イベントを表示します。これは受信したプロセスの名前と番号、ソースの行番号、メッセージのパラメータ番号（パラメータごとに 1 行になります）、メッセージタイプとメッセージチャネルの名前と番号を表示します。</p>
+<p><tt>-s</tt> はすべてのメッセージ送信イベントを表示します。</p>
+<p><tt><i>Spin</i></tt> ではさらに 3 つのオプション（<tt>-a</tt>、<tt>-m</tt>、<tt>-t</tt>）を使用する事ができます。</p>
+<p><tt>-a</tt> はプロトコルに特化した検証プログラムを生成します。この出力は <tt>pan.[cbhmt]</tt> と名付けられるいくつかの C 言語のファイルに書き出されます。生成されたファイルをコンパイルする事により実行可能な検証器が生成されます。状態空間をくまなく探索する場合は、単に次のようにコンパイルするだけでいいでしょう。</p>
+<pre>	$ gcc -o pan pan.c
+</pre>
+<p>大きなシステムの場合は、コンピュータのメモリを使い尽くすかもしれません。そのような大きなシステムの検証をする場合は、メモリを効率的に使うビット状態空間法を使う事により検証が可能になるかもしれません。ビット状態空間法を使用するときは以下のようにコンパイルします。</p>
+<pre>	$ gcc -DBITSTATE -o pan pan.c
+</pre>
+<p>このような探索のカバレージは、<i>ハッシュ要素</i>（詳細は後述）によります。生成された実行可能な検証プログラム自身にもオプションを指定する事ができます。検証プログラムに指定できるオプションは、上記のようにコンパイルした場合は &quot;<tt>./pan</tt> -?&quot; により確認できます（検証プログラムに指定できるオプションについては、後述の<i>「検証プログラムを使用する」</i>で説明します）。</p>
+<p><tt>-m</tt> は、メッセージ送信のデフォルトの振る舞いを変更するのに使用します。通常は、送信操作はターゲットとなるチャネルがいっぱいでないときだけ実行可能になります。これは暗黙のうちに同期を引き起こす事がありますが、それはいつでも望まれるものではありません。<tt>-m</tt> オプションを指定する事により送信操作は常に実行可能になります。いっぱいになっているチャネルへ送信したメッセージは失われます。このオプションを <tt>-a</tt> オプションと組み合わせて検証プログラムを生成した場合は、生成される検証プログラムの振る舞いも同様に異なります。検証する際には、メッセージが失われる事も考慮に入れる必要があるでしょう。</p>
+<p><tt>-t</tt> は、軌跡表示用のオプションです。検証プログラムが <tt>assert</tt> に対する違反やデッドロックや望まないメッセージの受信を見つけた場合、検証プログラムは <tt>pan.trail</tt> という名のファイルにエラーの軌跡を書き出します。<tt><i>Spin</i></tt> に <tt>-t</tt> オプションを指定する事によりその詳細を見る事ができます。他のオプション（<tt>pglrs</tt>）と組み合わせる事によりエラーシーケンスに対するいろいろな視点を簡単に手に入れる事ができるでしょう。</p>
+<p>ここで紹介しなかった <tt><i>Spin</i></tt> の他のオプションについては省略します。詳しくは、[5] を見てください。またヒントとして、このマニュアルの最後にある &quot;さらに深く掘り下げる&quot; も見てください。</p>
+
+<h3><tt>シミュレータ（The Simulator）</tt></h3>
+<p>以下に示すプロトコルの例を考えてみましょう。ここでは、以下のモデルを <tt>lynch</tt> というファイルに保存したとします。</p>
+<pre>   1  #define MIN	9
+   2  #define MAX	12
+   3  #define FILL	99
+   4  
+   5  mtype = { ack, nak, err }
+   6  
+   7  proctype transfer(chan chin, chout)
+   8  {	byte o, i, last_i=MIN;
+   9  
+  10  	o = MIN+1;
+  11  	do
+  12  	:: chin?nak(i) -&gt;
+  13  		assert(i == last_i+1);
+  14  		chout!ack(o)
+  15  	:: chin?ack(i) -&gt;
+  16  		if
+  17  		:: (o &lt;  MAX) -&gt; o = o+1
+  18  		:: (o &gt;= MAX) -&gt; o = FILL
+  19  		fi;
+  20  		chout!ack(o)
+  21  	:: chin?err(i) -&gt;
+  22  		chout!nak(o)
+  23  	od
+  24  }
+  25  
+  26  proctype channel(chan in, out)
+  27  {	byte md, mt;
+  28  	do
+  29  	:: in?mt,md -&gt;
+  30  		if
+  31  		:: out!mt,md
+  32  		:: out!err,0
+  33  		fi
+  34  	od
+  35  }
+  36  
+  37  init
+  38  {	chan AtoB = [1] of { mtype, byte };
+  39  	chan BtoC = [1] of { mtype, byte };
+  40  	chan CtoA = [1] of { mtype, byte };
+  41  	atomic {
+  42  		run transfer(AtoB, BtoC);
+  43  		run channel(BtoC, CtoA);
+  44  		run transfer(CtoA, AtoB)
+  45  	};
+  46  	AtoB!err,0;	/* start */
+  47  	0		/* hang */
+  48  }
+</pre>
+<p>このプロトコルはメッセージタイプ <tt>ack</tt>、<tt>nak</tt>、<tt>err</tt> を使用します。<tt>err</tt> は、2 つの転送プロセス間のチャネル通信におけるメッセージのゆがみをモデル化するのに使用しています。チャネルの振る舞いはチャネルプロセスによりモデル化しています。また転送プロセスの 2 つのローカル変数間の不変条件（上記のものはわざと間違っています）を <tt>assert</tt> を使って表明しています。</p>
+<p>何もオプションを指定しないで <tt><i>Spin</i></tt> を走らせると、ランダムシミュレーションを行い、実行が終わると単に出力するか、実行中に通った <tt>printf</tt> 文を出力します。この場合は、以下のような出力になります。</p>
+<pre>	$ spin lynch	# no options, not recommended
+	spin: "lynch" line 13: assertion violated
+	#processes: 4
+	proc  3 (transfer)	line 11 (state 15)
+	proc  2 (channel)	line 28 (state 6)
+	proc  1 (transfer)	line 13 (state 3)
+	proc  0 (:init:)	line 48 (state 6)
+	4 processes created
+	$ 
+</pre>
+<p>上記のモデルには <tt>printf</tt> はないので printf に対する出力はありませんが、プロセスが <tt>assert</tt> に違反したため、そのことが出力されています。さらに知りたい場合は、よりたくさん（たとえば、すべての受信イベント）出力するように走らせる事もできます。その結果を下の図 1 に示します。出力についてはほとんど説明するまでもないでしょう。</p>
+<p>上記のシミュレーションでは何度行っても同じ <tt>assert</tt> 違反を検出します。シミュレーションはランダムに非決定的選択をしているので、つねにこのケースの違反を見つける必要はありません。再現可能な実行シーケンスを強制する場合は、<tt>-n N</tt> オプションを使います。例えば、</p>
+<pre>	$ spin -r -n100 lynch
+</pre>
+<p>とすると、ランダムジェネレータの種に整数 100 を使用し、毎回同じ出力が得られる事を保証します。</p>
+<p>別のオプションを指定する事により、シミュレーションの実行による出力を多く出す事ができますが、出力されるテキストはすぐに膨大な量になります。それに対する簡単な解は <i>grep</i> を使って出力をフィルタリングする事です。たとえば、上記の例においてチャネルプロセスの振る舞いしか興味なかったとしてら、以下のようにします。</p>
+<pre>	$ spin -n100 -r lynch | grep "proc  2"
+</pre>
+<p>そうすると、図 1 のような結果になります。</p>
+<pre>	$ spin -r lynch
+	proc  1 (transfer) line  21, Recv err,0  &lt;- queue 1 (chin)
+	proc  2 (channel)  line  29, Recv nak,10 &lt;- queue 2 (in)
+	proc  3 (transfer) line  12, Recv nak,10 &lt;- queue 3 (chin)
+	proc  1 (transfer) line  15, Recv ack,10 &lt;- queue 1 (chin)
+	...
+	proc  1 (transfer) line  15, Recv ack,12 &lt;- queue 1 (chin)
+	proc  2 (channel)  line  29, Recv ack,99 &lt;- queue 2 (in)
+	proc  3 (transfer) line  15, Recv ack,99 &lt;- queue 3 (chin)
+	proc  1 (transfer) line  15, Recv ack,99 &lt;- queue 1 (chin)
+	proc  2 (channel)  line  29, Recv ack,99 &lt;- queue 2 (in)
+	proc  3 (transfer) line  21, Recv err,0  &lt;- queue 3 (chin)
+	proc  1 (transfer) line  12, Recv nak,99 &lt;- queue 1 (chin)
+	spin: "lynch" line 13: assertion violated
+	#processes: 4
+	proc  3 (transfer) line 11 (state 15)
+	proc  2 (channel)  line 28 (state 6)
+	proc  1 (transfer) line 13 (state 3)
+	proc  0 (:init:)   line 48 (state 6)
+	4 processes created
+	$ spin -n100 -r lynch | grep "proc  2"
+	proc  2 (channel) line 29, Recv nak,10 &lt;- queue 2 (in)
+	proc  2 (channel) line 29, Recv ack,11 &lt;- queue 2 (in)
+	proc  2 (channel) line 29, Recv ack,12 &lt;- queue 2 (in)
+	proc  2 (channel) line 28 (state 6)
+
+	図 1. シミュレーションの出力
+</pre>
+<p>以下のような結果を得るには、<tt>-c</tt> オプション（バージョン3.0での新機能）を使います。</p>
+<pre>	$ spin -c lynch
+	proc 0 = :init:
+	proc 1 = transfer
+	proc 2 = channel
+	proc 3 = transfer
+	q\p   0   1   2   3
+	  1   AtoB!err,0
+	  1   .   chin?err,0
+	  2   .   chout!nak,10
+	  2   .   .   in?nak,10
+	  3   .   .   out!err,0
+	  3   .   .   .   chin?err,0
+	  1   .   .   .   chout!nak,10
+	  1   .   chin?nak,10
+	  2   .   chout!ack,10
+	  2   .   .   in?ack,10
+	  3   .   .   out!ack,10
+	  3   .   .   .   chin?ack,10
+	  1   .   .   .   chout!ack,11
+	  1   .   chin?ack,11
+	  2   .   chout!ack,11
+	  2   .   .   in?ack,11
+	  3   .   .   out!ack,11
+	  3   .   .   .   chin?ack,11
+	  1   .   .   .   chout!ack,12
+	  1   .   chin?ack,12
+	  2   .   chout!ack,12
+	  2   .   .   in?ack,12
+	  3   .   .   out!ack,12
+	  3   .   .   .   chin?ack,12
+	  1   .   .   .   chout!ack,99
+	  1   .   chin?ack,99
+	  2   .   chout!ack,99
+	  2   .   .   in?ack,99
+	  3   .   .   out!err,0
+	  3   .   .   .   chin?err,0
+	  1   .   .   .   chout!nak,99
+	  1   .   chin?nak,99
+	spin: line  13 "lynch", Error: assertion violated
+	-------------
+	final state:
+	-------------
+	#processes: 4
+	 79:    proc  3 (transfer) line  11 "lynch" (state 15)
+	 79:    proc  2 (channel) line  28 "lynch" (state 6)
+	 79:    proc  1 (transfer) line  13 "lynch" (state 3)
+	 79:    proc  0 (:init:) line  47 "lynch" (state 6)
+	4 processes created
+</pre>
+<p>最初の列がチャネルの id 番号、最初の行がプロセス id 番号で、各行はどのプロセスがメッセージの転送を行ったかを出力しています。</p>
+
+<h3><tt>検証プログラム（The Analyzer）（<a href="http://spinroot.com/spin/Man/Pan.html">Pan.html</a> と <a href="http://spinroot.com/spin/Man/Roadmap.html">Roadmap.html</a> も見てください）</tt></h3>
+<p>シミュレーションは新しい設計した結果についてざっとデバッグするには役に立ちますが、そのシステムが本当にエラーを含んでいないかどうかを証明する事はできません。<tt><i>Spin</i></tt> では <tt>-a</tt> と <tt>-t</tt> オプションを使う事により、たとえ非常に大きなモデルであったとしても検証する事ができます。</p>
+<p>プロトコルモデルに対する状態空間探索プログラムは以下の 1 行目のようにして作られる 5 つファイルからなります。</p>
+<pre>	$ spin -a lynch
+	$ wc pan.[bchmt]
+	     99     285    1893 pan.b
+	   3158   10208   70337 pan.c
+	    356    1238    7786 pan.h
+	    216     903    6045 pan.m
+	    575    2099   14017 pan.t
+	   4404   14733  100078 total
+</pre>
+<p><i>pan.c</i> はプロトコルの検証を行う C 言語のコードのほとんどを含みます。<i>pan.t</i> はプロトコルの制御フローをエンコードした遷移マトリクスを含みます。<i>pan.b</i> と <i>pan.m</i> は順方向の遷移と逆方向の遷移の C のコード、<i>pan.h</i> はヘッダファイルです。これらはいくつかの方法でコンパイルする事ができます（たとえば、全状態空間探索するとか、ビット状態空間を使用するとか）。</p>
+
+<h3><tt>全探索（Exhaustive Search）</tt></h3>
+<p>システムの状態空間がおおよそ100,000ほどまでならば、もっとも良い方法は、デフォルトのままプログラムをコンパイルすることです。</p>
+<pre>	$ gcc -o pan pan.c
+</pre>
+<p>コンパイルによってできた実行プログラム <i>pan</i> を実行する事により検証する事ができます。この場合の検証は全探索を行います、つまり、可能なすべてのイベントシーケンスをテストします。もちろん、<tt>assert</tt> 違反があればそれを見つけ出します。</p>
+<pre>	$ ./pan
+	assertion violated (i == last_i + 1))
+	pan: aborted
+	pan: wrote pan.trail
+	search interrupted
+	vector 64 byte, depth reached 56
+	      61 states, stored
+	       5 states, linked
+	       1 states, matched
+	hash conflicts: 0 (resolved)
+	(size 2^18 states, stack frames: 0/5)
+</pre>
+<p>(より新しいバーションの出力形式は、同じ情報を含んでいますが、もっと洗練されています。)</p>
+<p>出力の最初の 1 行目は、<tt>assert</tt> 違反があった事を報告し、不変条件が満たされなかった最初の反例を教えてくれます。この違反は 61 状態が生成された後に発見されています。ハッシュ &quot;conflicts&quot; は、状態空間をアクセスしている間におきたハッシュの衝突回数を示しています。全探索モードでは、すべての状態はリスト（linked list）に格納して、すべての衝突を解決しています。この場合における最も関心がある部分は、3 行目でしょう。これは、シミュレータによって再現可能なエラーシーケンスが <tt>trail</tt> ファイルに作られたことを示しています。そこで以下のようにすると、</p>
+<pre>	$ spin -t -r lynch | grep "proc  2"
+</pre>
+<p>エラーの原因がなにであったか特定する事できるでしょう。<tt>assert</tt> が適切であれば、検証プログラムはその違反を見つけてくれます。もしこのような違反が報告されなかった場合は、間違いなく <tt>assert</tt> 違反を犯すような実行シーケンスが<i>なかった</i>ということでしょう。</p>
+
+<h3><tt>オプション（Options）</tt></h3>
+<p>検証プログラムはいくつかのオプションが指定できるように生成されます。どのようなオプションがあるかは、以下のようにするとチェックできます。</p>
+<pre>	$ ./pan --
+	-cN stop at Nth error (default=1)
+	-l  find non-progress cycles	# when compiled with -DNP
+	-a  find acceptance cycles	# when not compiled with -DNP
+	-mN max depth N (default=10k)
+	-wN hash table of 2^N entries (default=18)
+	 ...etc.
+</pre>
+<p>最初の <tt>-c</tt> オプションの引数に 0 を設定すると、検証プログラムはエラーを見つけても状態空間探索を続けます。エラーが見つからなかった場合や <tt>-c0</tt> オプションが指定された場合は、その検証が終了すると、実行できなかった（到達できなかった）コードに関する要旨を示します。この場合の出力は以下のようになります。</p>
+<pre>	$ ./pan -c0
+	assertion violated (i == (last_i + 1))
+	
+	vector 64 byte, depth reached 60, errors: 5
+	     165 states, stored
+	       5 states, linked
+	      26 states, matched
+	hash conflicts: 1 (resolved)
+	(size 2^18 states, stack frames: 0/6)
+	
+	unreached code :init: (proc 0):
+		reached all 9 states
+	unreached code channel (proc 1):
+		 line 35 (state 9),
+		reached: 8 of 9 states
+	unreached code transfer (proc 2):
+		 line 24 (state 18),
+		reached: 17 of 18 states
+</pre>
+<p>上記は、5 つの <tt>assert</tt> 違反があったことと 165 のユニークなシステムの状態が作られた事を示しています。状態に関しては、各状態の<i>ベクタサイズ</i>は 64 byte で、循環しない最長のシーケンスは 60 であることを示しています。チャネルプロセスと転送プロセスのどちらにも到達していない状態がひとつあることも示しています。到達していない状態は、それぞれのプロセスの <tt>do</tt> ループの直後です。どちらのループも終了しないことを意図して作られていることに注意してください。</p>
+<p><tt>-l</tt> オプションを指定すると、検証プログラムはデッドロックや <tt>assert</tt> 違反より non-progress ループを探します。このオプションについては &quot;より高度な使い方&quot; で説明します。</p>
+<p>検証プログラムはさらに 2 つのオプションをサポートしています。デフォルトでは探索の深さは 10,000 ステップに制限されています。もし探索が最大探索深さにまで達した場合は、探索を打ち切るるため検証は部分的になります。確実に全探索を行いたい場合は、&quot;depth reached&quot; が最大探索深さ以内である事を確認し、もしそうでなかった場合は <tt>-m</tt> オプションを指定して検証を繰り返す必要があります。</p>
+<p><tt>-m</tt> オプションは、もちろん明示的に探索を打ち切るのにも使用できます。たとえば、<tt>assert</tt> を違反する実行シーケンスのうち最短のものを探したいときに使います。このように探索を打ち切る場合は、その探索深さの中での可能なすべての違反を検出する事を保証しません。</p>
+<p>最後のオプションは <tt>-w N</tt> です。これは全状態空間の検証のスコープではなく、実行時間に影響を及ぼします。&quot;hash table width&quot; は通常検証プログラムが生成するシステムのユニークな状態数の予想値の対数と等しく、できれば、大きく設定しなければなりません（もしこれを小さく設定すると、ハッシュの衝突が増加し、探索に時間かかるようになるでしょう）。このデフォルト値 18 では 262,144 状態を扱うことができ、全状態空間探索検証ではこのデフォルト値のままで十分となるようにすべきです。</p>
+
+<h3><tt>ビット状態空間検証（Bit State Space Analyses）</tt></h3>
+<p>全状態空間探索で検証するときに必要となるメモリ量は簡単に計算する事ができます[4]。もし、上記のプロトコルの例のように、1 状態をエンコードするのに 64 byte 必要で、探索に使用できるシステムのメモリ量が 2MB だとすると、32,768 状態格納する事ができます。もしシステムの状態空間の中で到達可能な状態数がこれ以上になった場合、検証は失敗となります。いまのところ、<tt><i>Spin</i></tt> はこのトラップを避ける事ができる<i>唯一の</i>検証システムです。他の自動検証システムは（それが基盤としている形式主義に関係なく）、メモリを使い果たすとユーザに役立つ答えを返す事なく検証をやめてしまいます。</p>
+<p>従来の検証方法では、メモリの制限に達した場合、そのカバレージは急激に下がってしまいます。たとえば、格納できる状態数の2倍の状態数をもつ状態空間を検証するとき、その探索の有効なカバレージはたったの 50% です。<tt><i>Spin</i></tt> ではこのようなケースでもビット状態空間法[4]を使う事により十分に良い結果を得られます。ビット状態空間を使うには以下のように検証プログラムをコンパイルします。</p>
+<pre>	$ gcc -DBITSTATE -o pan pan.c
+</pre>
+<p>このようにコンパイルされた検証プログラムでももちろん同じように <tt>assert</tt> 違反を見つけ出す事ができます。</p>
+<pre>	$ ./pan
+	assertion violated (i == ((last_i + 1))
+	pan: aborted
+	pan: wrote pan.trail
+	search interrupted
+	vector 64 byte, depth reached 56
+	      61 states, stored
+	       5 states, linked
+	       1 states, matched
+	hash factor: 67650.064516
+	(size 2^22 states, stack frames: 0/5)
+	$ 
+</pre>
+<p>実際、中程度の大きさの問題を小さくするためにこの方法を使った場合は、全状態空間探索を比べてもほとんど違いはありません（ビット状態空間法の方が多少速く、メモリ使用量が格段に押さえられていることをのぞいてはですが）。しかし大きな問題を扱ったときには、より違いが表れます。出力の最後の 2 行に、<i>カバレージ</i>の見積もりが出るので大きなモデルを検証するときには役に立つでしょう。ビット状態空間が適応できる状態の最大数は、最後の行に書いてあります（ここでは、2 <sup> 22</sup> byte または 3200 万ビット（状態））。その上の行は<i>ハッシュ要素</i>を示しています。これは実際の状態数で割った状態の最大数におおよそ等しいです。大きなハッシュ要素（100 以上）は信頼性の高い事を示し、そのカバレージは 99% か 100% です。ハッシュ要素が 1 に近づくと、カバレージは 0% に近づきます。</p>
+<p>従来の検証システムが探索できなかった、もしくは、低いカバレージとなっていたケースにおいて部分的なカバレージを実現しているという点に十分に注意してください。しかし <tt><i>Spin</i></tt> が生成する答えが従来の自動検証システムより信頼性が低いということは<i>ありません</i>。</p>
+<p>ビット状態検証の目標値は、ビット状態空間のメモリの最大使用量をアロケートすることによりハッシュ要素を 100 以上にすることです。最善の結果を得るには、<tt>-w N</tt> オプションによって状態空間のサイズを正確にあなたのコンピュータで獲得できる実際のメモリ量に適したものにすることです。デフォルトでは <i>N</i> は 22 で、これに対応する状態空間は 4MB です。たとえば、あなたのコンピュータが 128 MB のメモリを持っている場合、<tt>-w27</tt> と指定する事により多くの状態について調べる事ができるでしょう。</p>
+
+<h2><tt><a name="U">まとめ（Summary）</a></tt></h2>
+<p>このマニュアルの最初の部分では、非同期データ通信に限らず <tt>Promela</tt> という名の言語による並行システムのモデルの表記法について説明しました。この言語はいくつかのちょっとかわった特徴を持っています。プロセス間の通信は、メッセージか共有変数を介して行われます。同期、非同期通信はどちらも一般化したメッセージ通信の機構の 2 つのケースとしてモデル化されます。<tt>Promela</tt> のすべての文は潜在的にモデルをブロックさせる可能性があります。それはその文が実行可能か、実行不可能かにより、ほとんどのケースはプロセスが走っている環境の状態によります。プロセス同士の相互作用とプロセス協調はこの言語の根底にあるものです。<tt>Promela</tt> の設計、<tt><i>Spin</i></tt> による検証とその応用範囲についての詳細は、[5] にあります。</p>
+<p><tt>Promela</tt> は、プログラム言語ではなく、検証用のモデリング言語を意図して作られています。例えば、手の込んだ抽象データ型は含んでいませんし、変数の基本型もわずかしかありません。検証モデルはプロトコルの実装を抽象化したものです。抽象化により、プロセスの相互作用の本質的要素を分離して調査する事ができるのです。抽象化により実装とプログラミングに関する詳細を抑え込むのです。</p>
+<p><tt>Promela</tt> の式、宣言、代入の構文はおおざっぱに <tt>C</tt> 言語 [6] を基礎としています。<tt>Promela</tt> は E.W. ダイクストラ [1] と C.A.R. ホーア [3] の &quot;ガードコマンド言語&quot; の影響を大いに受けています。しかし、それらとは重大な違いがあります。ダイクストラの言語はプロセスの相互作用を言語のプリミティブとして持っていません。ホーアの言語は、同期通信のみをベースとしています。またホーアの言語では、ガードの中で使用できる文の種類に制限があります。<tt>Promela</tt> の選択と循環文の意味は、他のガードコマンド言語と異なります。すべてのガードが偽のときは、その文は中断されるのではなくブロックされます（必要であれば同期がとられます）。</p>
+<p>ユーザは最小限の努力をするだけで、<tt>Promela</tt> の検証モデルから洗練された検証プログラムを生成することができます。<tt><i>Spin</i></tt> 自身、そして生成される検証プログラムどちらも ANSI C で記述されているため、<i>Unix</i> システム間で移植が可能です。それらは、ホストコンピュータの物理的な限界を引き出すように拡大縮小でき、プロトコルの検証においてその制限の中でできうる最善の検証を実現するものです。</p>
+
+<h2><tt><a name="B">付録：検証スイートの構築（Appendix: Building a Verification Suite）</a></tt></h2>
+<h3><tt><a href="http://spinroot.com/spin/Man/Exercises.html">Exercises.html</a> と <a href="http://spinroot.com/spin/Man/Roadmap.html">Roadmap.html</a> も見てください。</tt></h3>
+<p><tt><i>Spin</i></tt> を使った検証においてまず第一にやらなければならない仕事は、手で問題の忠実なモデルを <tt>Promela</tt> により記述することです。この言語はわざと小さく作られています。モデリングの目的は調査すべき協調問題に関するシステムの側面を抽出する事です。他の詳細部分は、捨象します。形式的には、モデルは縮小版のシステムであり、検証する特性に関する部分だけフルシステムと等価である必要があります。いったんモデルを構築すると、それは、その特性を検証するために使われる、われわれが &quot;検証スイート&quot; と呼ぶ一連の構成物の基盤となります。検証スイートを構築するために、モデルに <tt>assert</tt> を仕掛ける事ができます。<tt>assert</tt> により、モデルの中の変数の値やイベントのシーケンスに関する不変条件を形式化することができます。</p>
+<p>以下で取り上げる最初の例は、ずいぶん昔に議論され、1966 年に H. Hyman が Communications of the ACM で発表した排他制御の問題に対する解です。</p>
+<pre>  1 Boolean array b(0;1) integer k, i,
+  2 comment process i, with i either 0 or 1, and k = 1-i;
+  3 C0:	b(i) := false;
+  4 C1:	if k != i then begin;
+  5 C2:	if not b(1-i) then go to C2;
+  6 	else k := i; go to C1 end;
+  7 	else critical section;
+  8 	b(i) := true;
+  9 	remainder of program;
+ 10 	go to C0;
+ 11 	end
+</pre>
+<p>この解は、Dekker の初期の解として知られるもので、2 つのプロセス（番号 0 と 1）を対象としたものです。いま、Hyman の解がクリティカルセクションに対するアクセスの排他制御を完全に保証している事を証明したいとしましょう。われわれの最初の仕事は、<tt>Promela</tt> でこの解のモデルを作る事です。ここで、この解で使われている変数に対する名前をよりわかりやすいものにします。</p>
+<pre>   1  bool want[2];	/* Bool array b */
+   2  bool turn;	/* integer    k */
+   3  
+   4  proctype P(bool i)
+   5  {
+   6  	want[i] = 1;
+   7  	do
+   8  	:: (turn != i) -&gt;
+   9  		(!want[1-i]);
+  10  		turn = i
+  11  	:: (turn == i) -&gt;
+  12  		break
+  13  	od;
+  14  	skip; /* critical section */
+  15  	want[i] = 0
+  16  }
+  17  
+  18  init { run P(0); run P(1) }
+</pre>
+<p>このモデルの検証プログラムを生成、コンパイルすることで、デッドロックのような主要な問題があれば、それを見つける事ができます。</p>
+<pre>	$ spin -a hyman0
+	$ gcc -o pan pan.c
+	$ ./pan
+	full statespace search for:
+	assertion violations and invalid endstates
+	vector 20 byte, depth reached 19, errors: 0
+	      79 states, stored
+	       0 states, linked
+	      38 states, matched	total: 117
+	hash conflicts: 4 (resolved)
+	(size 2^18 states, stack frames: 3/0)
+	
+	unreached code _init (proc 0):
+		reached all 3 states
+	unreached code P (proc 1):
+		reached all 12 states
+</pre>
+<p>このモデルは最初のテストにパスしました。しかし、われわれが本当に興味があるのは、このアルゴリズムが排他制御を保証しているかどうか、についてです。これにはいくつかの方法がありますが、最も簡単な方法は単に正当性を表明する <tt>assert</tt> をモデルに加えることです。</p>
+<pre>   1  bool want[2];
+   2  bool turn;
+   3  byte cnt;
+   4  
+   5  proctype P(bool i)
+   6  {
+   7  	want[i] = 1;
+   8  	do
+   9  	:: (turn != i) -&gt;
+  10  		(!want[1-i]);
+  11  		turn = i
+  12  	:: (turn == i) -&gt;
+  13  		break
+  14  	od;
+  15  	skip; /* critical section */
+  16  	cnt = cnt+1;
+  17  	assert(cnt == 1);
+  18  	cnt = cnt-1;
+  19  	want[i] = 0
+  20  }
+  21  
+  22  init { run P(0); run P(1) }
+</pre>
+<p>ここでは、グローバル変数 <tt>cnt</tt> を追加し、クリティカルセクションに侵入したときに +1、クリティカルセクションからでるときに -1 するようにしました。この変数の値がとりうる最大値は 1 であり、ひとつのプロセスがクリティカルセクション内にいるときのみ 1 になります。</p>
+<pre>	$ spin -a hyman1
+	$ gcc -o pan pan.c
+	$ ./pan
+	assertion violated (cnt==1)
+	pan: aborted (at depth 15)
+	pan: wrote pan.trail
+	full statespace search for:
+	assertion violations and invalid endstates
+	search was not completed
+	vector 20 byte, depth reached 25, errors: 1
+	     123 states, stored
+	       0 states, linked
+	      55 states, matched	total: 178
+	hash conflicts: 42 (resolved)
+	(size 2^18 states, stack frames: 3/0)
+</pre>
+<p>検証プログラムは <tt>assert</tt> 違反があったと報告しています。このエラーシーケンスをチェックするために <tt><i>Spin</i></tt> に <tt>-t</tt> オプションを指定してその軌跡を見てみましょう。</p>
+<pre>	$ spin -t -p hyman1
+	proc  0 (_init)	line 24 (state 2)
+	proc  0 (_init)	line 24 (state 3)
+	proc  2 (P)	line 8 (state 7)
+	proc  2 (P)	line 9 (state 2)
+	proc  2 (P)	line 10 (state 3)
+	proc  2 (P)	line 11 (state 4)
+	proc  1 (P)	line 8 (state 7)
+	proc  1 (P)	line 12 (state 5)
+	proc  1 (P)	line 15 (state 10)
+	proc  2 (P)	line 8 (state 7)
+	proc  2 (P)	line 12 (state 5)
+	proc  2 (P)	line 15 (state 10)
+	proc  2 (P)	line 16 (state 11)
+	proc  2 (P)	line 17 (state 12)
+	proc  2 (P)	line 18 (state 13)
+	proc  1 (P)	line 16 (state 11)
+	proc  1 (P)	line 17 (state 12)
+	spin: "hyman1" line 17: assertion violated
+	step 17, #processes: 3
+			want[0] = 1
+			_p[0] = 12
+			turn[0] = 1
+			cnt[0] = 2
+	
+	proc  2 (P)	line 18 (state 13)
+	proc  1 (P)	line 17 (state 12)
+	proc  0 (_init)	line 24 (state 3)
+	3 processes created
+</pre>
+<p>さて、もうひとつのエラーの発見方法を見てみましょう。もう一度モデルにクリティカルセクション内のプロセスの数に関する情報を加えます。</p>
+<pre>   1  bool want[2];
+   2  bool turn;
+   3  byte cnt;
+   4  
+   5  proctype P(bool i)
+   6  {
+   7  	want[i] = 1;
+   8  	do
+   9  	:: (turn != i) -&gt;
+  10  		(!want[1-i]);
+  11  		turn = i
+  12  	:: (turn == i) -&gt;
+  13  		break
+  14  	od;
+  15  	cnt = cnt+1;
+  16  	skip;	/* critical section */
+  17  	cnt = cnt-1;
+  18  	want[i] = 0
+  19  }
+  20  
+  21  proctype monitor()
+  22  {
+  23  	assert(cnt == 0 || cnt == 1)
+  24  }
+  25  
+  26  init {
+  27  	run P(0); run P(1); run monitor()
+  28  }
+</pre>
+<p>今度は、カウンタ <tt>cnt</tt> の値に関する不変条件は、独立したプロセス <tt>monitor()</tt> （名前に特に意味はないのですが）におかれました。この追加されたプロセスは、2 つのプロセスとともに走ります。このプロセスは 1 ステップを実行し終了しますが、これはシステムの実行中の<i>どのタイミングでも</i>実行する可能性があります。<tt>Promela</tt> によりモデル化されたシステム、および、<tt><i>Spin</i></tt> により検証されるシステムは、完全な非同期です。よって、<tt><i>Spin</i></tt> による検証は 3 つのプロセスの可能な<i>すべての</i>タイミングを検証の対象とするため、この <tt>assert</tt> は他の 2 つのプロセスの生存期間のあらゆるタイミングで評価されるのです。もし検証プログラムが違反を報告しなかった場合は、われわれは <tt>assert</tt> 違反を犯すような実行シーケンスが（3 つのプロセスの実行スピードによらず）まったくないことと結論づける事ができるのです。monitor プロセスによるシステムの不変条件の妥当性をチェックする方法は洗練された方法です。検証プログラムは以下のような結果を報告するでしょう。</p>
+<pre>	$ spin -a hyman2
+	$ gcc -o pan pan.c
+	$ ./pan
+	assertion violated ((cnt==0)||(cnt==1))
+	pan: aborted (at depth 15)
+	pan: wrote pan.trail
+	full statespace search for:
+	assertion violations and invalid endstates
+	search was not completed
+	vector 24 byte, depth reached 26, errors: 1
+	     368 states, stored
+	       0 states, linked
+	     379 states, matched	total: 747
+	hash conflicts: 180 (resolved)
+	(size 2^18 states, stack frames: 4/0)
+</pre>
+<p>2 つのプロセスと 3 番目の monitor プロセスとの余分なインターリービングのため、探索すべきシステム状態数が増えていますが、エラーは正しく報告されています。</p>
+
+<h3><tt>もうひとつの例 (Another Example）</tt></h3>
+<p>システムの正当性がいつでもグローバルな不変条件という観点から与えられるという訳ではありません。この例はそれを示したものです。これは単純なビット交換プロトコル（alternating bit protocol）で、メッセージの損失、ゆがみをモデリングし、否定応答（negative acknowledgements）により拡張したものです。</p>
+<pre>   1  #define MAX	5
+   2  
+   3  mtype = { mesg, ack, nak, err };
+   4  
+   5  proctype sender(chan in, out)
+   6  {	byte o, s, r;
+   7  
+   8  	o=MAX-1;
+   9  	do
+  10  	:: o = (o+1)%MAX; /* next msg */
+  11  again: if
+  12         :: out!mesg(o,s) /* send */
+  13         :: out!err(0,0)  /* distort */
+  14         :: skip       /* or lose */
+  15         fi;
+  16         if
+  17         :: timeout   -&gt; goto again
+  18         :: in?err(0,0) -&gt; goto again
+  19         :: in?nak(r,0) -&gt; goto again
+  20         :: in?ack(r,0) -&gt;
+  21  		if
+  22  		:: (r == s) -&gt; goto progress
+  23  		:: (r != s) -&gt; goto again
+  24  		fi
+  25         fi;
+  26  progress:	s = 1-s	/* toggle seqno */
+  27  	od
+  28  }
+  29  
+  30  proctype receiver(chan in, out)
+  31  {	byte i;		/* actual input   */
+  32  	byte s;		/* actual seqno   */
+  33  	byte es;	/* expected seqno */
+  34  	byte ei;	/* expected input */
+  35  
+  36  	do
+  37  	:: in?mesg(i, s) -&gt;
+  38  		if
+  39  		:: (s == es) -&gt;
+  40  			assert(i == ei);
+  41  progress:		es = 1 - es;
+  42  			ei = (ei + 1)%MAX;
+  43  			if
+  44  	/* send,   */	:: out!ack(s,0)
+  45  	/* distort */	:: out!err(0,0)
+  46  	/* or lose */	:: skip
+  47  			fi
+  48  		:: (s != es) -&gt;
+  49  			if
+  50  	/* send,   */	:: out!nak(s,0)
+  51  	/* distort */	:: out!err(0,0)
+  52  	/* or lose */	:: skip
+  53  			fi
+  54  		fi
+  55  	:: in?err -&gt;
+  56  		out!nak(s,0)
+  57  	od
+  58  }
+  59  
+  60  init {
+  61  	chan s_r = [1] of { mtype,byte,byte };
+  62  	chan r_s = [1] of { mtype,byte,byte };
+  63  	atomic {
+  64  		run sender(r_s, s_r);
+  65  		run receiver(s_r, r_s)
+  66  	}
+  67  }
+</pre>
+<p>このプロトコルが正しくデータを転送するという命題をテストするために、このモデルにはすでにいくつかの <tt>assert</tt> が挿入されています。sender はメッセージとして <tt>MAX</tt> を法とする剰余からなる無限列を転送するように定義されています。<tt>MAX</tt> の値は重要ではなく、プロトコルの中でシーケンス番号の幅（今のケースでは 2）より大きければ何でもかまいません。たとえメッセージの損失の可能性があろうとも送信されたデータが消えたり、並べ替えられたりすることなく receiver に届けられることが検証したいのです。40 行目の <tt>assert</tt> により正確にそれを検証します。もし上記に書いた要求が満たせない可能性がある場合は、この <tt>assert</tt> の違反が検出されます。</p>
+<p>最初の検証では、そういった問題の可能性がなく、われわれを安心させてくれます。</p>
+<pre>	$ spin -a ABP0
+	$ gcc -o pan pan.c
+	$ ./pan
+	full statespace search for:
+	assertion violations and invalid endstates
+	vector 40 byte, depth reached 131, errors: 0
+	     346 states, stored
+	       1 states, linked
+	     125 states, matched	 total: 472
+	hash conflicts: 17 (resolved)
+	(size 2^18 states, stack frames: 0/25)
+	
+	unreached code _init (proc 0):
+		reached all 4 states
+	unreached code receiver (proc 1):
+		line 58 (state 24)
+		reached: 23 of 24 states
+	unreached code sender (proc 2):
+		line 28 (state 27)
+		reached: 26 of 27 states
+</pre>
+<p>しかし注意してください。この結果は送信されたメッセージが正しい順番で届けられたことを意味しているのにすぎません。われわれはデータがかならず転送されるということはチェックしていません。sender と receiver が何も有効なメッセージを送らずエラーメッセージを交換してぐるぐるまわっている可能性もあります。これをチェックするために、sender と receiver がミスする事なく前進していることを示す各プロセスの状態に &quot;プログレス状態&quot; のラベルをはります（実際には片方のプロセスだけで十分なのですが）。</p>
+<p>これでプログレス状態をまったく通過しないまま実行サイクルが繰り返される事がない事を検証できるようになりました。先の実行ファイルはそのまま使えないので、ノンプログレスサイクルを見つけるために検証プログラムをコンパイルしなおします。</p>
+<pre>	$ gcc -DNP -o pan pan.c
+	$ ./pan -l
+	pan: non-progress cycle (at depth 6)
+	pan: wrote pan.trail
+	full statespace search for:
+	assertion violations and non-progress loops
+	search was not completed
+	vector 44 byte, depth reached 8, loops: 1
+	      12 states, stored
+	       1 states, linked
+	       0 states, matched	total: 13
+	hash conflicts: 0 (resolved)
+	(size 2^18 states, stack frames: 0/1)
+</pre>
+<p>結果によると、少なくともひとつのノンプログレスサイクルがあります。最初に見つけたものは検証プログラムにより trail ファイルにその軌跡が保存されていて、われわれをそれを見る事ができます。その結果を図 2 の前半に示します。メッセージのゆがみや損失が何度も繰り返し続けられており、事実エラーですが、エラーシーケンスとしてはあまり面白くありません。ノンプログレスサイクルがいくつ存在するのか見るために、<tt>-c</tt> フラグを使ってみます。<tt>-c</tt> オプションの引数に 0 を設定した場合は、エラーの合計数が出力されます。</p>
+<pre>	$ pan -l -c0
+	full statespace search for:
+	assertion violations and non-progress loops
+	vector 44 byte, depth reached 137, loops: 92
+	     671 states, stored
+	       2 states, linked
+	     521 states, matched	 total: 1194
+	hash conflicts: 39 (resolved)
+	(size 2^18 states, stack frames: 0/26)
+</pre>
+<p>エラーは、92 ケースあります。<tt>-c</tt> オプションを <tt>-c1</tt>, <tt>-c2</tt>, <tt>-c3</tt>, ... のように順に使ってそのシーケンスをひとつずつ見る事ができます。しかし、最初に見つかったメッセージの損失を繰り返す事を原因とするエラーシーケンスを取り除いて、少しやるべき事を減らすことができます。そのために &quot;progress&quot; の 8 文字から始まる接頭語をつけたラベルをメッセージを損失している各行（13, 43, 48 行目）に張り、残るエラーサイクルを見ます（ラベルは :: の後ろに挿入します）<a id="notetext_4" href="#notefoot_4" class="note_super" title="訳注">*4</a>。</p>
+<pre>	$ spin -a ABP1
+	$ gcc -DNP -o pan pan.c
+	
+	$ ./pan -l
+	pan: non-progress cycle (at depth 133)
+	pan: wrote pan.trail
+	
+	full statespace search for:
+	assertion violations and non-progress loops
+	search was not completed
+	
+	vector 44 byte, depth reached 136, loops: 1
+	
+	     148 states, stored
+	       2 states, linked
+	       2 states, matched	 total: 152
+	
+	hash conflicts: 0 (resolved)
+	(size 2^18 states, stack frames: 0/26)
+</pre>
+<p>今度は、生成された軌跡によりこのプロトコルにおける真に深刻なバグを明らかにすることができます。図 2 の後半にその軌跡を示します。</p>
+<pre>      $ spin -t -r -s ABP0
+      &lt;&lt;&lt;&lt;<start of="" cycle="">&gt;&gt;&gt;&gt;
+      proc  1 (sender)   line  13, Send err,0,0 -&gt; queue 2 (out)
+      proc  2 (receiver) line  55, Recv err,0,0 &lt;- queue 2 (in)
+      proc  2 (receiver) line  56, Send nak,0,0 -&gt; queue 1 (out)
+      proc  1 (sender)   line  19, Recv nak,0,0 &lt;- queue 1 (in)
+      spin: trail ends after 12 steps
+      step 12, #processes: 3
+		_p[0] = 6
+      proc  2 (receiver)	line 36 (state 21)
+      proc  1 (sender)	line 11 (state 6)
+      proc  0 (_init)	line 67 (state 4)
+      3 processes created
+      $ 
+      $ spin -t -r -s ABP1
+      ...
+      proc  2 (receiver) line  39, Recv mesg,0,0 &lt;- queue 2 (in)
+      proc  2 (receiver) line  47, Send err,0,0  -&gt; queue 1 (out)
+      proc  1 (sender)   line  20, Recv err,1,0  &lt;- queue 1 (in)
+      proc  1 (sender)   line  12, Send mesg,0,0 -&gt; queue 2 (out)
+      proc  2 (receiver) line  39, Recv mesg,0,0 &lt;- queue 2 (in)
+      proc  2 (receiver) line  52, Send nak,0,0  -&gt; queue 1 (out)
+      proc  1 (sender)   line  21, Recv nak,0,0  &lt;- queue 1 (in)
+      proc  1 (sender)   line  12, Send mesg,0,0 -&gt; queue 2 (out)
+      proc  2 (receiver) line  39, Recv mesg,0,0 &lt;- queue 2 (in)
+      proc  2 (receiver) line  52, Send nak,0,0  -&gt; queue 1 (out)
+      &lt;&lt;&lt;&lt;<start of="" cycle="">&gt;&gt;&gt;&gt;
+      proc  1 (sender)   line  21, Recv nak,0,0  &lt;- queue 1 (in)
+      proc  1 (sender)   line  12, Send mesg,0,0 -&gt; queue 2 (out)
+      proc  2 (receiver) line  39, Recv mesg,0,0 &lt;- queue 2 (in)
+      proc  2 (receiver) line  52, Send nak,0,0  -&gt; queue 1 (out)
+      spin: trail ends after 226 steps
+      ...
+
+	図 2. エラーの軌跡 - 拡張した Alternating Bit Protocol
+</start></start></pre>
+<p>ひとつの（成功を示す）acknowledgment がゆがめられて転送されると、sender と receiver は無限サイクルに陥ってしまいます。sender は acknowledgment を受け取っていないので頑固に最後に送ったメッセージを繰り返し送信します、また、receiver もまた頑固に否定応答（negative acknowledgment）を送り拒否し続けます。</p>
+
+<h3><tt>さらに深く掘り下げる（Digging Deeper）</tt></h3>
+<p>このマニュアルは <tt><i>Spin</i></tt> の主要な機能の概要と検証で使えるより一般的なやり方について説明しているにすぎません。<tt><i>Spin</i></tt> には、ここで取り上げたもの以外にも、検証の問題に立ち向かうのに役に立つであろうたくさんの機能があります。</p>
+<p><tt><i>Spin</i></tt> ではまた &quot;タスク&quot; や &quot;要求&quot; を <i>never</i>-claim でモデル化することでシステムがそれを満たすかどうか検証することもできます。ユーザがシステムが達成すべきタスクを形式化して claim で表現すると、<tt><i>Spin</i></tt> は素早くその claim が成り立つ事を証明するか、反例を示すでしょう。never-claim はB&uuml;chiオートマトン<a id="notetext_5" href="#notefoot_5" class="note_super" title="訳注">*5</a>と等価で、線形時相論理をつかった制約をモデル化可能です。新しいバーションの <tt><i>Spin</i></tt> では、要求を定義するのに LTL の構文を使う事ができます。<tt><i>Spin</i></tt> はユーザが定義した LTL をそれと等価な never-claim に変換することができます。</p>
+<p><tt><i>Spin</i></tt> ではまた、ユーザが定義したサブセットに探索を制限するようにシステムの状態空間を縮小する事ができます（ここでも never-claim を使用しますが、今度は状態空間を切り取るために使用します）。この方法により、たとえ全状態空間探索が実行不可能でも、システムの振る舞いに与えたエラーのパターンが含まれるかどうかをすばやく検証することができます。</p>
+<p>これら <tt>Promela</tt> と <tt><i>Spin</i></tt> の別の使用方法についての詳細については、[5] を参考にしてください。<tt><i>Spin</i></tt> バージョン 2.0 と 3.0 での拡張については <a href="http://spinroot.com/spin/Man/WhatsNew.html">WhatsNew.html</a> を見てください。</p>
+
+<h2<tt><a name="R">参考文献（References）</a></tt></h2>
+<p>[1] Dijkstra, E.W., ``Guarded commands, non-determinacy and formal derivation of programs.'' <i>CACM</i> 18, 8 (1975), 453-457.<br />
+[2] Dijkstra, E.W., ``Solution to a problem in concurrent programming control.'' <i>CACM</i> 8, 9 (1965), 569.<br />
+[3] Hoare, C.A.R., ``Communicating Sequential Processes.'' <i>CACM</i> 21, 8 (1978), 666-677.<br />
+[4] Holzmann, G.J., ``Algorithms for automated protocol verification.'' <i>AT&amp;T Technical Journal</i> 69, 1 (Jan/Feb 1990). Special Issue on Protocol Testing, Specification, Verification.<br />
+[5] Holzmann, G.J., <i>The Spin Model Checker: Primer and Reference Manual</i> (2003), Addison-Wesley.<br />
+[6] Kernighan, B.W. and Ritchie, D.M., <i>The C Programming Language.</i> 2nd ed. (1988), Prentice Hall.</p>
+
+<div id="note"><hr class="note_hr" /><a id="notefoot_1" href="#notetext_1" class="note_super">*1</a>
+<span class="small">訳注 : 最近のバーション（確認したのは Version 4.2.9 -- 8 February 2007）では必ずしも <tt>init</tt> プロセスを宣言する必要はありません。以下のようにプロセス型の宣言の頭に active をつけることでプログラム起動時にプロセスのインスタンスを生成する事ができます。
+<pre>	byte state = 2;
+
+	active proctype A()
+	{	(state == 1) -&gt; state = 3
+	}
+
+	active proctype B()
+	{	state = state - 1
+	}
+</pre>
+</span><br />
+<a id="notefoot_2" href="#notetext_2" class="note_super">*2</a>
+<span class="small">訳注 : Version 2 で <tt>atomic</tt> の意味が変更されたため、<tt>atomic</tt> シーケンスの中でブロックしてもランタイムエラーとはなりません。もし <tt>atomic</tt> シーケンスの中でプロセスがブロックした場合、他のプロセスのうちひとつを非決定的に選択し実行します。その後ブロックしていた文が実行可能になると、プロセスは残りのシーケンスを不可分に実行する事ができます。（ただし、他のプロセスも実行可能な場合は、どのプロセスが実行されるかは非決定的です）。この <tt>atomic</tt> の変更に伴って、<tt>d_step</tt> が新たに追加されました。<tt>atomic</tt> と同様、<tt>d_step</tt> で囲まれたシーケンスを不可分に実行する事ができます。しかし次に示す3つの制約があります。1. シーケンスは完全に決定的であること、2. <tt>d_step</tt> の外に出て行く <tt>goto</tt> ジャンプを含まないこと、3. <tt>d_step</tt> の外から入ってくるラベルを含まないこと、です。また、<tt>d_step</tt> シーケンスの中でブロックした場合はランタイムエラーとなります。詳しくは、<a href="http://spinroot.com/spin/Man/WhatsNew.html">WhatsNew.html</a> の 2.1.3 d_step および 2.3.1 Blocking Atomic Sequences に説明があります。
+</span><br /><br />
+<a id="notefoot_3" href="#notetext_3" class="note_super">*3</a>
+<span class="small">訳注 : 原文では、"For instance, if by adding a label to the process type dijkstra(), from section 1.9:" となっていますが、Gerard J. Holzmann に確認したところ、これは間違いで本文中に 1.9 節はありません（原文も修正されました。2007.06.03）。
+</span><br /><br />
+<a id="notefoot_4" href="#notetext_4" class="note_super">*4</a>
+<span class="small">訳注 : 最近のバージョン（確認したのは Version 4.2.9 -- 8 February 2007）では :: の直後にラベルを入れると以下のようにエラーになります。
+<pre>	$ spin -a ABP0
+	error: ("ABP0":13) label progress_0 placed incorrectly
+	=====>instead of
+		do (or if)
+		:: ...
+		:: Label: statement
+		od (of fi)
+	=====>always use
+	Label:	do (or if)
+		:: ...
+		:: statement
+		od (or fi)
+</pre>
+Gerard J. Holzmann に
+<pre>   :: skip -> progress_1: out!err(0,0)
+</pre>
+というようにすればいいと教えてもらいました。メッセージを損失している行（14, 52行目）およびエラーを送信している行（13, 51行目）にプログレスラベルを挿入すると、本文中で説明している真に深刻なバグのエラーシーケンスが得られます。以下にプログレスラベルを挿入したモデルを示します。
+<pre>   1  #define MAX	5
+   2	
+   3	mtype = { mesg, ack, nak, err };
+   4	
+   5	proctype sender(chan in, out)
+   6	{	byte o, s, r;
+   7		
+   8		o=MAX-1;
+   9		do
+  10		  :: o = (o+1)%MAX; /* next msg */
+  11	again:	     if
+  12		       :: out!mesg(o,s) /* send */
+  13		       :: skip -> progress_0: out!err(0,0)  /* distort */
+  14		       :: skip -> progress_1: skip /* or lose */
+  15		     fi;
+  16		     if
+  17		       :: timeout   -> goto again
+  18		       :: in?err(0,0) -> goto again
+  19		       :: in?nak(r,0) -> goto again
+  20		       :: in?ack(r,0) ->
+  21			  if
+  22			    :: (r == s) -> goto progress
+  23			    :: (r != s) -> goto again
+  24			fi
+  25		     fi;
+  26	progress:	s = 1-s	/* toggle seqno */
+  27		od
+  28	}
+  29	
+  30	proctype receiver(chan in, out)
+  31	{	byte i;		/* actual input   */
+  32		byte s;		/* actual seqno   */
+  33		byte es;	/* expected seqno */
+  34		byte ei;	/* expected input */
+  35		
+  36		do
+  37		  :: in?mesg(i, s) ->
+  38		     if
+  39		       :: (s == es) ->
+  40			  assert(i == ei);
+  41	progress:	  es = 1 - es;
+  42			  ei = (ei + 1)%MAX;
+  43			  if 
+  44			    :: out!ack(s,0) /* send,   */	
+  45			    :: out!err(0,0) /* distort */
+  46			    :: skip /* or lose */
+  47			  fi
+  48		       :: (s != es) ->  
+  49			  if
+  50			    :: out!nak(s,0) /* send,   */
+  51			    :: skip -> progress_0: out!err(0,0) /* distort */
+  52			    :: skip -> progress_1: skip /* or lose */
+  53			  fi
+  54		     fi
+  55		  :: in?err(0,0) ->
+  56		     out!nak(s,0)
+  57		od
+  58	}
+  59	
+  60	init {
+  61		chan s_r = [1] of { mtype,byte,byte };
+  62		chan r_s = [1] of { mtype,byte,byte };
+  63		atomic {
+  64			run sender(r_s, s_r);
+  65			run receiver(s_r, r_s)
+  66		}
+  67	}
+</pre>		
+</span><br /></div>
+<a id="notefoot_5" href="#notetext_5" class="note_super">*5</a>
+<span class="small">訳注 : B&uuml;chiは"ビューヒ"とか"ビュッヒ"と発音します。
+</span><br /><br />
+</div>
+</div>
+
+<hr class="full_hr" />
+
+<table cols="3">
+<tbody><tr>
+<td valign="top" width="200">
+<a href="http://spinroot.com/spin/Man/index.html">Spin Online References</a><br>
+<a href="http://spinroot.com/spin/Man/promela.html">Promela Manual Index</a><br>
+<a href="http://spinroot.com/spin/Man/grammar.html">Promela Grammar</a><br>
+<a href="http://spinroot.com/spin/">Spin HomePage</a>
+</td>
+<td align="center" valign="top" width="100"></td>
+<td align="right" valign="top" width="400">
+<font size="3"><b><tt>(Page Updated: 30 August 2014)</tt></b></font></td></tr>
+</tbody></table>
+
+<hr class="full_hr" />
+
+</body>
+</html>
